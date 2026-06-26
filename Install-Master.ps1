@@ -60,10 +60,7 @@ if (-not (Test-Path -Path $ExePath)) {
     exit 2
 }
 
-if (-not (Test-Path -Path $MsiPath)) {
-    Write-InstallLog -Message "Fehler: Podman MSI ($MsiPath) nicht gefunden!" -Level Error
-    exit 40
-}
+# Note: MSI path is no longer required since we use winget for WSL2-compatible installation
 
 if (-not (Test-Path -Path $ConfigPath)) {
     Write-InstallLog -Message "Fehler: Konfigurationsdatei $ConfigPath nicht gefunden!" -Level Error
@@ -200,24 +197,22 @@ try {
 }
 
 # -----------------------------------------------------------------------------
-# STEP 5.1: PODMAN CLI INSTALLATION (via MSI) - MACHINE SCOPE (global)
+# STEP 5.1: PODMAN CLI INSTALLATION (via winget) - WSL2 COMPATIBLE
 # -----------------------------------------------------------------------------
-Write-InstallLog -Message "Installiere Podman CLI via MSI (machine scope)..." -Level Info
+Write-InstallLog -Message "Installiere Podman CLI via winget (WSL2 compatible)..." -Level Info
 try {
-    # Install podman-installer-windows-amd64.msi silently with machine-scope installation
-    # /qn = quiet mode, no UI
-    # ALLUSERS=1 = install for all users to %PROGRAMFILES%\Podman
-    # The installer automatically updates the SYSTEM PATH when using machine scope
-    $msiProc = Start-Process -FilePath "msiexec.exe" `
-        -ArgumentList "/i", "$MsiPath", "/qn", "ALLUSERS=1", "/norestart" `
+    # Use winget to install Podman - this automatically configures for WSL2 runtime
+    # --silent = no UI, --accept-package-agreements and --accept-source-agreements = auto-approve licenses
+    $wingetProc = Start-Process -FilePath "winget.exe" `
+        -ArgumentList "install", "Podman", "--silent", "--accept-package-agreements", "--accept-source-agreements" `
         -Wait -NoNewWindow -PassThru
-    if ($msiProc.ExitCode -ne 0) {
-        Write-InstallLog -Message "Fehler bei der MSI Installation (ExitCode: $($msiProc.ExitCode))" -Level Error
+    if ($wingetProc.ExitCode -ne 0) {
+        Write-InstallLog -Message "Fehler bei der winget Installation (ExitCode: $($wingetProc.ExitCode))" -Level Error
         exit 41
     }
-    Write-InstallLog -Message "Podman CLI erfolgreich via MSI installiert (machine scope)." -Level Info
+    Write-InstallLog -Message "Podman CLI erfolgreich via winget installiert (WSL2 compatible)." -Level Info
 } catch {
-    Write-InstallLog -Message "Fehler beim Starten der MSI Installation: $_" -Level Error
+    Write-InstallLog -Message "Fehler beim Starten der winget Installation: $_" -Level Error
     exit 42
 }
 
@@ -280,9 +275,9 @@ try {
         Write-InstallLog -Message "  Podman Machine existiert bereits, starte sie..." -Level Info
         & $podmanExe machine start 2>$null | Out-Null
     } else {
-        Write-InstallLog -Message "  Erstelle neue Podman Machine (default)..." -Level Info
-        # Initialize with default settings (silent, no interactive prompts)
-        & $podmanExe machine init 2>$null | Out-Null
+        Write-InstallLog -Message "  Erstelle neue Podman Machine (WSL2 runtime)..." -Level Info
+        # Initialize with WSL2 runtime (silent, no interactive prompts)
+        & $podmanExe machine init --runtime wsl 2>$null | Out-Null
         & $podmanExe machine start 2>$null | Out-Null
     }
     
