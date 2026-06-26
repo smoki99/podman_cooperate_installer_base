@@ -37,6 +37,7 @@ function Test-Administrator {
 $InstallDir  = $PSScriptRoot
 $ExePath     = Join-Path -Path $InstallDir -ChildPath "podman-desktop-setup.exe"
 $MsiPath     = Join-Path -Path $InstallDir -ChildPath "podman-installer-windows-amd64.msi"
+$CliPath     = Join-Path -Path $InstallDir -ChildPath "podman.exe"
 $ConfigPath  = Join-Path -Path $InstallDir -ChildPath "podman-config.json"
 
 # Create log file in temp directory for admin review
