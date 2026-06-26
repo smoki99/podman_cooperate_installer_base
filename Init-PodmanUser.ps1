@@ -158,7 +158,7 @@ appendWindowsPath=false
   }
 }
 "@
-        $RegistriesConf = "unqualified-search-registries = [\"$($Config.Registries.AllowedSearchRegistry)\"]"
+        $RegistriesConf = "unqualified-search-registries = [""$($Config.Registries.AllowedSearchRegistry)""]"
 
         $TempPolicy = "$env:TEMP\policy.json"
         $TempReg    = "$env:TEMP\99-corp.conf"
