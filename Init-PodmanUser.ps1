@@ -53,6 +53,22 @@ try {
     Write-PodmanLog -Message "=== Podman User Init Started ===" -Level Info
     Write-PodmanLog -Message "User: $($env:USERNAME)" -Level Info
     
+    # Add Podman Desktop to PATH for all users (system-wide)
+    $podmanPath = "C:\Program Files\Podman Desktop"
+    if (Test-Path $podmanPath) {
+        Write-PodmanLog -Message "Adding Podman to system PATH..." -Level Info
+        $currentPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+        if ($currentPath -notlike "*$podmanPath*") {
+            $newPath = "$podmanPath;$currentPath"
+            [Environment]::SetEnvironmentVariable("PATH", $newPath, "Machine")
+            Write-PodmanLog -Message "Podman added to system PATH" -Level Info
+        } else {
+            Write-PodmanLog -Message "Podman already in system PATH" -Level Info
+        }
+    } else {
+        Write-PodmanLog -Message "Warning: Podman not found at $podmanPath" -Level Warning
+    }
+    
     $AppDataConfig  = "$env:APPDATA\Podman Desktop"
     $SettingsFile   = "$AppDataConfig\settings.json"
     # $PSScriptRoot zeigt auf das Verzeichnis, in das Install-Master.ps1 die Skripte kopiert hat
