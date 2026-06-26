@@ -166,11 +166,11 @@ try {
     if (Test-Path $wslExe) {
         Write-InstallLog -Message "  WSL bereits installiert, prüfe auf Updates..." -Level Info
         # Run wsl --update silently to prevent popup prompts
-        Start-Process -FilePath $wslExe -ArgumentList "--update", "--quiet" -Wait -NoNewWindow -ErrorAction SilentlyContinue | Out-Null
+        Start-Process -FilePath $wslExe -ArgumentList "--update", "--quiet" -Wait -NoNewWindow -RedirectStandardOutput "$env:TEMP\wsl-update.log" -RedirectStandardError "$env:TEMP\wsl-update-error.log" -ErrorAction SilentlyContinue | Out-Null
     } else {
         Write-InstallLog -Message "  WSL nicht installiert, installiere jetzt..." -Level Info
         # Download and install WSL silently from Microsoft Store (winget)
-        Start-Process -FilePath "winget.exe" -ArgumentList "install", "Microsoft.Windows.Subsystem.Linux", "--silent", "--accept-package-agreements", "--accept-source-agreements" -Wait -NoNewWindow -ErrorAction SilentlyContinue | Out-Null
+        Start-Process -FilePath "winget.exe" -ArgumentList "install", "Microsoft.Windows.Subsystem.Linux", "--silent", "--accept-package-agreements", "--accept-source-agreements" -Wait -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget-wsl.log" -RedirectStandardError "$env:TEMP\winget-wsl-error.log" -ErrorAction SilentlyContinue | Out-Null
     }
 } catch {
     Write-InstallLog -Message "Warnung: WSL Update/Installation konnte nicht durchgeführt werden: $_" -Level Warning
