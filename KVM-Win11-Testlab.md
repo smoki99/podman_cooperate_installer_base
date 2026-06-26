@@ -309,6 +309,80 @@ Start-Service sshd
 
 ---
 
+## 3b. Test-Benutzerkonten einrichten (Admin vs. Standard-User)
+
+Für das Testen des Deployment-Skripts benötigst du zwei Konten:
+- **ITAdmin** — Volladministrator (bereits erstellt bei Installation)
+- **developer** — Standardbenutzer mit eingeschränkten Rechten
+
+### Standard-Benutzer "developer" erstellen
+
+```powershell
+# PowerShell als ITAdmin öffnen und ausführen:
+$SecurePassword = ConvertTo-SecureString "DevPass123!" -AsPlainText -Force
+New-LocalUser -Name "developer" -Password $SecurePassword -FullName "Developer Test User" -Description "Standardbenutzer für Podman-Tests"
+Add-LocalGroupMember -Group "Users" -Member "developer"
+
+# Bestätigen:
+Get-LocalUser developer | Select-Object Name, Enabled, PasswordNeverExpires
+```
+
+### Optional: GPO-Restriktionen für Standard-Benutzer anwenden
+
+```powershell
+# Lokale Gruppenrichtlinien öffnen (als ITAdmin):
+gpedit.msc
+
+# Empfohlene Einstellungen unter:
+# Benutzerkonfiguration → Administrative Vorlagen:
+
+# 1. Software-Installation verhindern:
+#   System → Installation von Removable Storage Devices verhindern
+#   Windows-Komponenten → Windows Installer → Installationen deaktivieren
+
+# 2. Registry-Zugriff einschränken:
+#   System → Zugriff auf Registrierungsinstrumente und -funktionen beschränken
+
+# 3. PowerShell-Execution Policy (optional):
+#   Windows-Subsystem für Linux → WSL-Installationen erlauben: JA
+```
+
+### Schnell zwischen Konten wechseln zum Testen
+
+```powershell
+# Von der Anmeldeoberfläche:
+# Ctrl+Alt+Entf → Benutzer wechseln → developer auswählen
+
+# Oder per Befehl (als ITAdmin):
+taskkill /F /IM explorer.exe  # Explorer beenden, um abzumelden
+```
+
+### Berechtigungs-Checkliste: Was kann jeder Account?
+
+| Aktion | ITAdmin | developer |
+|--------|---------|-----------|
+| Install-Master.ps1 ausführen | ✓ | ✗ (benötigt Admin) |
+| WSL2 installieren/aktivieren | ✓ | ✗ |
+| Podman Machine erstellen | ✓ | ✗ |
+| Scheduled Tasks erstellen | ✓ | ✗ |
+| GPO ändern | ✓ | ✗ |
+| Init-PodmanUser.ps1 ausführen (als Task) | N/A | ✓ (wenn als Task geplant) |
+| podman machine ls | ✓ | ✓ (nach Setup) |
+| podman run | ✓ | ✓ (nach Setup) |
+
+### Berechtigungen prüfen (PowerShell)
+
+```powershell
+# Prüfen ob aktueller Benutzer Admin ist:
+whoami /groups | findstr "S-1-5-32-544"
+# Ausgabe: S-1-5-32-544 0x20000 BUILTIN\Administrators → JA, Admin
+
+# Alle Gruppen des aktuellen Benutzers anzeigen:
+whoami /groups
+```
+
+---
+
 ## 4. Snapshots: Workflow
 
 > **WICHTIG:** Diese VM verwendet OVMF UEFI (pflash) Firmware, was interne libvirt-Snapshots nicht unterstützt.
