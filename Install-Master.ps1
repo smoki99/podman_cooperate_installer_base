@@ -60,7 +60,10 @@ if (-not (Test-Path -Path $ExePath)) {
     exit 2
 }
 
-# Note: MSI path is no longer required since we use winget for WSL2-compatible installation
+if (-not (Test-Path -Path $MsiPath)) {
+    Write-InstallLog -Message "Fehler: Podman MSI ($MsiPath) nicht gefunden!" -Level Error
+    exit 40
+}
 
 if (-not (Test-Path -Path $ConfigPath)) {
     Write-InstallLog -Message "Fehler: Konfigurationsdatei $ConfigPath nicht gefunden!" -Level Error
@@ -197,22 +200,21 @@ try {
 }
 
 # -----------------------------------------------------------------------------
-# STEP 5.1: PODMAN CLI INSTALLATION (via winget) - WSL2 COMPATIBLE
+# STEP 5.1: PODMAN CLI INSTALLATION (via MSI) - WSL2 COMPATIBLE
 # -----------------------------------------------------------------------------
-Write-InstallLog -Message "Installiere Podman CLI via winget (WSL2 compatible)..." -Level Info
+Write-InstallLog -Message "Installiere Podman CLI via MSI (WSL2 compatible)..." -Level Info
 try {
-    # Use winget to install Podman - this automatically configures for WSL2 runtime
-    # --silent = no UI, --accept-package-agreements and --accept-source-agreements = auto-approve licenses
-    $wingetProc = Start-Process -FilePath "winget.exe" `
-        -ArgumentList "install", "Podman", "--silent", "--accept-package-agreements", "--accept-source-agreements" `
+    # Use msiexec to install Podman MSI silently with allusers flag for machine-wide installation
+    $msiProc = Start-Process -FilePath "msiexec.exe" `
+        -ArgumentList "/i", "$MsiPath", "/qn", "ALLUSERS=1" `
         -Wait -NoNewWindow -PassThru
-    if ($wingetProc.ExitCode -ne 0) {
-        Write-InstallLog -Message "Fehler bei der winget Installation (ExitCode: $($wingetProc.ExitCode))" -Level Error
+    if ($msiProc.ExitCode -ne 0) {
+        Write-InstallLog -Message "Fehler bei der MSI Installation (ExitCode: $($msiProc.ExitCode))" -Level Error
         exit 41
     }
-    Write-InstallLog -Message "Podman CLI erfolgreich via winget installiert (WSL2 compatible)." -Level Info
+    Write-InstallLog -Message "Podman CLI erfolgreich via MSI installiert (WSL2 compatible)." -Level Info
 } catch {
-    Write-InstallLog -Message "Fehler beim Starten der winget Installation: $_" -Level Error
+    Write-InstallLog -Message "Fehler beim Starten der MSI Installation: $_" -Level Error
     exit 42
 }
 
@@ -268,17 +270,26 @@ try {
     # Machine-scope installation path (all users)
     $podmanExe = "C:\Program Files\Podman\podman.exe"
     
-    # Check if machine already exists
-    $existingMachines = & $podmanExe machine list 2>$null | Select-String "Running|Stopped" -Context 0,1
+    # Check if machine already exists using Start-Process for proper argument handling
+    $listResult = Start-Process -FilePath $podmanExe `n        -ArgumentList @("machine", "list") `n        -Wait -NoNewWindow `n        -RedirectStandardOutput "$env:TEMP\podman-list.txt" `n        -PassThru
     
-    if ($existingMachines) {
-        Write-InstallLog -Message "  Podman Machine existiert bereits, starte sie..." -Level Info
-        & $podmanExe machine start 2>$null | Out-Null
-    } else {
-        Write-InstallLog -Message "  Erstelle neue Podman Machine (WSL2 runtime)..." -Level Info
-        # Initialize with WSL2 runtime (silent, no interactive prompts)
-        & $podmanExe machine init --provider wsl 2>$null | Out-Null
-        & $podmanExe machine start 2>$null | Out-Null
+    if (Test-Path "$env:TEMP\podman-list.txt") {
+        $existingMachines = Get-Content "$env:TEMP\podman-list.txt" | Select-String "Running|Stopped"
+        
+        if ($existingMachines) {
+            Write-InstallLog -Message "  Podman Machine existiert bereits, starte sie..." -Level Info
+            Start-Process -FilePath $podmanExe `n                -ArgumentList @("machine", "start") `n                -Wait -NoNewWindow -PassThru | Out-Null
+        } else {
+            Write-InstallLog -Message "  Erstelle neue Podman Machine (WSL2 runtime)..." -Level Info
+            # Initialize with WSL2 provider using Start-Process for proper argument handling
+            $initResult = Start-Process -FilePath $podmanExe `n                -ArgumentList @("machine", "init", "--provider", "wsl") `n                -Wait -NoNewWindow -PassThru
+            if ($initResult.ExitCode -eq 0) {
+                Write-InstallLog -Message "  Machine init erfolgreich." -Level Info
+                Start-Process -FilePath $podmanExe `n                    -ArgumentList @("machine", "start") `n                    -Wait -NoNewWindow -PassThru | Out-Null
+            } else {
+                Write-InstallLog -Message "  Machine init fehlgeschlagen (ExitCode: $($initResult.ExitCode))" -Level Warning
+            }
+        }
     }
     
     Write-InstallLog -Message "  Podman Machine erfolgreich initialisiert." -Level Info
