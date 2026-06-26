@@ -165,6 +165,32 @@ try {
 }
 
 # -----------------------------------------------------------------------------
+# STEP 5.1: WINDOWS FIREWALL RULES (prevent interactive prompts)
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Erstelle Windows Firewall Regeln..." -Level Info
+try {
+    # Podman Desktop application rule
+    $podmanExe = "C:\Program Files\Podman Desktop\Podman Desktop.exe"
+    if (Test-Path $podmanExe) {
+        New-NetFirewallRule -DisplayName "Podman Desktop Outbound" `
+            -Direction Outbound -Action Allow -Program $podmanExe `
+            -Description "Erlaubt Podman Desktop ausgehende Verbindungen" | Out-Null
+        Write-InstallLog -Message "  Firewall-Regel 'Podman Desktop Outbound' erstellt." -Level Info
+    }
+    
+    # WSL2 network interface rule (allow all traffic on vEthernet adapter)
+    $wslInterface = Get-NetAdapter | Where-Object {$_.Name -like "vEthernet*"} | Select-Object -First 1
+    if ($wslInterface) {
+        New-NetFirewallRule -DisplayName "WSL2 Network Interface" `
+            -Direction Both -Action Allow -InterfaceAlias $wslInterface.Name `
+            -Description "Erlaubt Netzwerkverkehr über WSL2 vEthernet Adapter" | Out-Null
+        Write-InstallLog -Message "  Firewall-Regel 'WSL2 Network Interface' erstellt ($($wslInterface.Name))." -Level Info
+    }
+} catch {
+    Write-InstallLog -Message "Warnung: Firewall-Regeln konnten nicht erstellt werden: $_" -Level Warning
+}
+
+# -----------------------------------------------------------------------------
 # STEP 6: SCHEDULED TASKS REGISTRATION
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Registriere Scheduled Tasks..." -Level Info
