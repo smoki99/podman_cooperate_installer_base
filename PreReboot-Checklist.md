@@ -113,12 +113,18 @@ if ([System.Diagnostics.EventLog]::SourceExists("PodmanHeal")) {
 # 9. WSL Distribution existiert?
 Write-Host "[9/10] Prüfe Podman Machine..." -ForegroundColor Cyan
 try {
-    $machines = podman machine ls --format json | ConvertFrom-Json
-    if ($machines) {
-        Write-Host "  ✓ $($machines.Count) Podman Machine(n) gefunden:" -ForegroundColor Green
-        foreach ($m in $machines) { Write-Host "    - $($m.Name)" }
+    # Prüfe ob podman im PATH verfügbar ist (kann vor Reboot noch nicht der Fall sein)
+    $podmanPath = Get-Command podman -ErrorAction SilentlyContinue
+    if (-not $podmanPath) {
+        Write-Host "  ⚠ Podman CLI noch nicht im PATH (wird nach Reboot verfügbar sein)" -ForegroundColor Yellow
     } else {
-        Write-Host "  ⚠ Keine Podman Machines (wird beim ersten Login erstellt)" -ForegroundColor Yellow
+        $machines = & podman machine ls --format json | ConvertFrom-Json
+        if ($machines) {
+            Write-Host "  ✓ $($machines.Count) Podman Machine(n) gefunden:" -ForegroundColor Green
+            foreach ($m in $machines) { Write-Host "    - $($m.Name)" }
+        } else {
+            Write-Host "  ⚠ Keine Podman Machines (wird beim ersten Login erstellt)" -ForegroundColor Yellow
+        }
     }
 } catch {
     Write-Host "  ✗ podman machine ls fehlgeschlagen: $_" -ForegroundColor Red
