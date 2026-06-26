@@ -263,49 +263,11 @@ try {
 }
 
 # -----------------------------------------------------------------------------
-# STEP 5.2: PODMAN MACHINE INITIALIZATION (silent)
+# STEP 5.2: SKIPPED - PODMAN MACHINE INITIALIZATION
 # -----------------------------------------------------------------------------
-Write-InstallLog -Message "Initialisiere Podman Machine..." -Level Info
-try {
-    # Machine-scope installation path (all users)
-    $podmanExe = "C:\Program Files\Podman\podman.exe"
-    
-    # Verify podman.exe exists before proceeding
-    if (-not (Test-Path $podmanExe)) {
-        Write-InstallLog -Message "  ERROR: podman.exe not found at $podmanExe" -Level Error
-        throw "Podman executable not installed"
-    }
-    
-    # IMPORTANT: Set PODMAN_PROVIDER environment variable to force WSL2.
-    # When running as Administrator, podman defaults to Hyper-V. Setting this env var
-    # forces it to use WSL2 which is what we want for this deployment.
-    Write-InstallLog -Message "  Forcing WSL2 provider via PODMAN_PROVIDER environment variable..." -Level Info
-    $env:PODMAN_PROVIDER = "wsl"
-    
-    # Check if machine already exists
-    $listOutput = & $podmanExe machine list 2>&1 | Out-String
-    Write-InstallLog -Message "  Podman machine list output: $listOutput" -Level Info
-    
-    if ($listOutput -match "Running|Stopped") {
-        Write-InstallLog -Message "  Podman Machine existiert bereits, starte sie..." -Level Info
-        & $podmanExe machine start 2>&1 | Out-Null
-    } else {
-        Write-InstallLog -Message "  Erstelle neue Podman Machine (WSL2 runtime)..." -Level Info
-        # Initialize with WSL2 provider (forced by env var)
-        $initOutput = & $podmanExe machine init 2>&1 | Out-String
-        Write-InstallLog -Message "  Machine init output: $initOutput" -Level Info
-        if ($initOutput -notmatch "error|Error|ERROR") {
-            Write-InstallLog -Message "  Machine init erfolgreich." -Level Info
-            & $podmanExe machine start 2>&1 | Out-Null
-        } else {
-            Write-InstallLog -Message "  Machine init fehlgeschlagen" -Level Warning
-        }
-    }
-    
-    Write-InstallLog -Message "  Podman Machine erfolgreich initialisiert." -Level Info
-} catch {
-    Write-InstallLog -Message "Warnung: Podman Machine Initialisierung fehlgeschlagen: $_" -Level Warning
-}
+Write-InstallLog -Message "Podman Machine initialization skipped..." -Level Info
+Write-InstallLog -Message "  Machine will be initialized by Init-PodmanUser.ps1 after reboot." -Level Info
+Write-InstallLog -Message "  This ensures WSL2 provider is used (not Hyper-V)." -Level Info
 
 # -----------------------------------------------------------------------------
 # STEP 5.3: WINDOWS FIREWALL RULES (prevent interactive prompts)
