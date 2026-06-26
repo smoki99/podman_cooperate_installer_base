@@ -149,6 +149,26 @@ try {
 }
 
 # -----------------------------------------------------------------------------
+# STEP 4.1: SILENT WSL INSTALL/UPDATE (prevents Microsoft Store popup)
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Prüfe und installiere WSL (silent)..." -Level Info
+try {
+    # Check if wsl.exe exists and get its version
+    $wslExe = "$env:SystemRoot\System32\wsl.exe"
+    if (Test-Path $wslExe) {
+        Write-InstallLog -Message "  WSL bereits installiert, prüfe auf Updates..." -Level Info
+        # Run wsl --update silently to prevent popup prompts
+        Start-Process -FilePath $wslExe -ArgumentList "--update", "--quiet" -Wait -NoNewWindow -ErrorAction SilentlyContinue | Out-Null
+    } else {
+        Write-InstallLog -Message "  WSL nicht installiert, installiere jetzt..." -Level Info
+        # Download and install WSL silently from Microsoft Store (winget)
+        Start-Process -FilePath "winget.exe" -ArgumentList "install", "Microsoft.Windows.Subsystem.Linux", "--silent", "--accept-package-agreements", "--accept-source-agreements" -Wait -NoNewWindow -ErrorAction SilentlyContinue | Out-Null
+    }
+} catch {
+    Write-InstallLog -Message "Warnung: WSL Update/Installation konnte nicht durchgeführt werden: $_" -Level Warning
+}
+
+# -----------------------------------------------------------------------------
 # STEP 5: PODMAN DESKTOP INSTALLATION
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Installiere Podman Desktop..." -Level Info
