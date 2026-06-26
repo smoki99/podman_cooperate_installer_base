@@ -23,12 +23,18 @@ if ($wslFeature.State -eq 'Enabled' -and $vmpFeature.State -eq 'Enabled') {
 
 # 2. Podman Desktop installiert?
 Write-Host "[2/10] Prüfe Podman Desktop Installation..." -ForegroundColor Cyan
-$podmanAppx = Get-AppxPackage *podman* -ErrorAction SilentlyContinue
-if ($podmanAppx) {
-    Write-Host "  ✓ Podman Desktop installiert (Version: $($podmanAppx.Version))" -ForegroundColor Green
+$podmanExe = "C:\Program Files\Podman Desktop\Podman Desktop.exe"
+if (Test-Path $podmanExe) {
+    Write-Host "  ✓ Podman Desktop installiert: C:\Program Files\Podman Desktop" -ForegroundColor Green
 } else {
-    Write-Host "  ✗ Podman Desktop NICHT gefunden" -ForegroundColor Red
-    $allPassed = $false
+    # Fallback: AppX Package prüfen
+    $podmanAppx = Get-AppxPackage *podman* -ErrorAction SilentlyContinue
+    if ($podmanAppx) {
+        Write-Host "  ✓ Podman Desktop installiert (AppX Version: $($podmanAppx.Version))" -ForegroundColor Green
+    } else {
+        Write-Host "  ✗ Podman Desktop NICHT gefunden" -ForegroundColor Red
+        $allPassed = $false
+    }
 }
 
 # 3. Scheduled Tasks existieren?
