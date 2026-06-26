@@ -214,4 +214,3 @@ finally {
         Write-PodmanLog -Message "Initialization failed. Task will retry on next login." -Level Warning
     }
 }
-</parameter>  }<environment_details> # Visual Studio Code Visible Files Init-PodmanUser.ps1# Visual Studio Code Open Tabs podman-config.json README.md PreReboot-Checklist.md SelfHeal-Podman.ps1 GPO-Corporate-Security.md KVM-Win11-Testlab.md Install-Master.ps1 Init-PodmanUser.ps1 Run-Test.cmd # Current Time 6/26/2026, 8:31:45 PM (Europe/Berlin, UTC+2:00) # Context Window Usage 22,887 / 79.303K tokens used (29%) # Current Mode ACT MODE</environment_details> <tool_result>{
