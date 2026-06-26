@@ -77,56 +77,187 @@ sudo systemctl status libvirtd   # Sollte "active (running)" zeigen
 ### Festplatten-Image anlegen
 
 ```bash
-sudo mkdir -p /var/lib/libvirt/images
+# Zielverzeichnis anlegen falls nötig
+sudo mkdir -p /mnt/data2/virtimages
 
-sudo qemu-img create -f qcow2 \
-  /var/lib/libvirt/images/win11-podman-test.qcow2 \
-  80G
+# 80 GB qcow2-Image erstellen
+sudo qemu-img create -f qcow2 /mnt/data2/virtimages/win11-podman-test.qcow2 80G
 ```
 
-### VM mit virt-install definieren und starten
+### VM per XML definieren (empfohlene Methode)
+
+`virt-install` hat auf diesem System Einschränkungen beim Parsen von `--clock`- und `--boot`-Optionen. Die zuverlässigste Methode ist `virsh define` mit einer vorbereiteten XML-Datei, abgeleitet von einer bereits funktionierenden VM-Konfiguration.
 
 ```bash
-# ISO-Pfad anpassen falls nötig
-WIN11_ISO="/iso/$(ls /iso/ | grep -i win11 | head -1)"
-echo "Verwende ISO: $WIN11_ISO"
+# XML-Datei in /tmp ablegen (exakt wie die funktionierende Referenz-VM)
+cat > /tmp/win11-podman-test.xml << 'EOF'
+<domain type="kvm">
+  <name>win11-podman-test</name>
+  <metadata>
+    <libosinfo:libosinfo xmlns:libosinfo="http://libosinfo.org/xmlns/libvirt/domain/1.0">
+      <libosinfo:os id="http://microsoft.com/win/11"/>
+    </libosinfo:libosinfo>
+  </metadata>
+  <memory unit="KiB">8388608</memory>
+  <currentMemory unit="KiB">8388608</currentMemory>
+  <memoryBacking>
+    <source type="memfd"/>
+    <access mode="shared"/>
+  </memoryBacking>
+  <vcpu placement="static">4</vcpu>
+  <resource>
+    <partition>/machine</partition>
+  </resource>
+  <os firmware="efi">
+    <type arch="x86_64" machine="pc-q35-8.2">hvm</type>
+    <firmware>
+      <feature enabled="yes" name="enrolled-keys"/>
+      <feature enabled="yes" name="secure-boot"/>
+    </firmware>
+    <loader readonly="yes" secure="yes" type="pflash">/usr/share/OVMF/OVMF_CODE_4M.ms.fd</loader>
+    <nvram template="/usr/share/OVMF/OVMF_VARS_4M.ms.fd">/var/lib/libvirt/qemu/nvram/win11-podman-test_VARS.fd</nvram>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+    <hyperv mode="custom">
+      <relaxed state="on"/>
+      <vapic state="on"/>
+      <spinlocks state="on" retries="8191"/>
+      <vpindex state="on"/>
+      <synic state="on"/>
+      <stimer state="on"/>
+      <reset state="on"/>
+      <vendor_id state="on" value="KVM Hv"/>
+      <frequencies state="on"/>
+      <reenlightenment state="on"/>
+      <tlbflush state="on"/>
+      <ipi state="on"/>
+    </hyperv>
+    <kvm><hidden state="on"/></kvm>
+    <vmport state="off"/>
+    <smm state="on"/>
+  </features>
+  <cpu mode="host-passthrough" check="none" migratable="on">
+    <topology sockets="1" dies="1" cores="4" threads="1"/>
+    <!-- AMD Ryzen: svm. Bei Intel-CPU diese Zeile durch <feature policy="require" name="vmx"/> ersetzen -->
+    <feature policy="require" name="svm"/>
+  </cpu>
+  <clock offset="localtime">
+    <timer name="rtc" tickpolicy="catchup"/>
+    <timer name="pit" tickpolicy="delay"/>
+    <timer name="hpet" present="no"/>
+    <timer name="hypervclock" present="yes"/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <pm>
+    <suspend-to-mem enabled="no"/>
+    <suspend-to-disk enabled="no"/>
+  </pm>
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+    <!-- Hauptfestplatte: sata-Bus — Windows erkennt sie ohne zusätzlichen Treiber -->
+    <disk type="file" device="disk">
+      <driver name="qemu" type="qcow2"/>
+      <source file="/mnt/data2/virtimages/win11-podman-test.qcow2"/>
+      <target dev="sda" bus="sata"/>
+      <boot order="2"/>
+      <address type="drive" controller="0" bus="0" target="0" unit="0"/>
+    </disk>
+    <!-- Windows 11 Installations-ISO -->
+    <disk type="file" device="cdrom">
+      <driver name="qemu" type="raw"/>
+      <source file="/mnt/data1/iso/Win11_25H2_EnglishInternational_x64.iso"/>
+      <target dev="sdb" bus="sata"/>
+      <boot order="1"/>
+      <readonly/>
+      <address type="drive" controller="0" bus="0" target="0" unit="1"/>
+    </disk>
+    <!-- VirtIO-Treiber-ISO (für Netzwerk nach der Installation) -->
+    <disk type="file" device="cdrom">
+      <driver name="qemu" type="raw"/>
+      <source file="/mnt/data1/iso/virtio-win-0.1.285.iso"/>
+      <target dev="sdc" bus="sata"/>
+      <readonly/>
+      <address type="drive" controller="0" bus="0" target="0" unit="2"/>
+    </disk>
+    <controller type="usb" index="0" model="qemu-xhci" ports="15">
+      <address type="pci" domain="0x0000" bus="0x02" slot="0x00" function="0x0"/>
+    </controller>
+    <controller type="pci" index="0" model="pcie-root"/>
+    <controller type="pci" index="1" model="pcie-root-port">
+      <model name="pcie-root-port"/>
+      <target chassis="1" port="0x10"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x02" function="0x0" multifunction="on"/>
+    </controller>
+    <controller type="pci" index="2" model="pcie-root-port">
+      <model name="pcie-root-port"/>
+      <target chassis="2" port="0x11"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x02" function="0x1"/>
+    </controller>
+    <controller type="virtio-serial" index="0">
+      <address type="pci" domain="0x0000" bus="0x03" slot="0x00" function="0x0"/>
+    </controller>
+    <controller type="sata" index="0">
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x1f" function="0x2"/>
+    </controller>
+    <!-- Bridge-Netzwerk: direkte Verbindung ins LAN (kein NAT) -->
+    <interface type="bridge">
+      <source bridge="br0"/>
+      <model type="virtio"/>
+      <address type="pci" domain="0x0000" bus="0x01" slot="0x00" function="0x0"/>
+    </interface>
+    <serial type="pty">
+      <target type="isa-serial" port="0">
+        <model name="isa-serial"/>
+      </target>
+    </serial>
+    <console type="pty">
+      <target type="serial" port="0"/>
+    </console>
+    <channel type="spicevmc">
+      <target type="virtio" name="com.redhat.spice.0"/>
+      <address type="virtio-serial" controller="0" bus="0" port="1"/>
+    </channel>
+    <input type="mouse" bus="ps2"/>
+    <input type="keyboard" bus="ps2"/>
+    
+    <tpm model="tpm-crb"><backend type="emulator" version="2.0"/></tpm>
+    <graphics type="spice">
+      <listen type="none"/>
+      <image compression="off"/>
+    </graphics>
+    <sound model="ich9">
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x1b" function="0x0"/>
+    </sound>
+    <audio id="1" type="spice"/>
+    <video>
+      <model type="virtio" heads="1" primary="yes"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x01" function="0x0"/>
+    </video>
+    <memballoon model="virtio">
+      <address type="pci" domain="0x0000" bus="0x04" slot="0x00" function="0x0"/>
+    </memballoon>
+  </devices>
+</domain>
+EOF
 
-sudo virt-install \
-  --name win11-podman-test \
-  --memory 8192 \
-  --vcpus 4 \
-  --cpu host-passthrough \
-  --os-variant win11 \
-  --machine q35 \
-  --boot loader=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd,loader.readonly=yes,loader.type=pflash,loader.secure=yes,nvram.template=/usr/share/OVMF/OVMF_VARS_4M.ms.fd \
-  --features smm.state=on \
-  --clock hypervclock.present=yes \
-  --tpm emulator,model=tpm-crb,version=2.0 \
-  --disk path=/var/lib/libvirt/images/win11-podman-test.qcow2,format=qcow2,bus=virtio,cache=writeback \
-  --disk "$WIN11_ISO",device=cdrom,bus=sata \
-  --disk /iso/virtio-win.iso,device=cdrom,bus=sata \
-  --network network=default,model=virtio \
-  --graphics spice,listen=127.0.0.1 \
-  --video qxl \
-  --channel spicevmc \
-  --noautoconsole \
-  --wait -1
+# VM aus XML definieren
+sudo virsh define /tmp/win11-podman-test.xml
+
+# Prüfen ob die VM definiert wurde
+sudo virsh list --all | grep win11-podman-test
+
+# VM starten
+sudo virsh start win11-podman-test
+
+# Konsole sofort öffnen (in einem zweiten Terminal)
+virt-viewer --connect qemu:///system win11-podman-test &
 ```
 
-> **Hinweis:** `--noautoconsole` startet die Installation ohne GUI-Fenster.  
-> Den Installer-Desktop öffnen mit:
-> ```bash
-> virt-viewer --connect qemu:///system win11-podman-test &
-> ```
-
-### Alternativer OVMF-Pfad (ältere Linux Mint / Ubuntu 20.04)
-
-Falls der obige Befehl mit "file not found" für OVMF fehlschlägt:
-```bash
-ls /usr/share/OVMF/
-# Wenn nur OVMF_CODE.fd existiert (ohne _4M):
-# --boot loader=/usr/share/OVMF/OVMF_CODE.fd,loader.readonly=yes,loader.type=pflash ...
-```
+> **Wichtig bei Intel-CPU:** Die Zeile `<feature policy="require" name="svm"/>` in der XML ist AMD-spezifisch (AMD-V). Bei einer Intel-CPU entweder durch `<feature policy="require" name="vmx"/>` ersetzen oder die Zeile ganz entfernen — `host-passthrough` allein reicht für Nested Virtualization.
 
 ---
 
