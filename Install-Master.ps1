@@ -284,12 +284,16 @@ try {
     }
     
     # WSL2 network interface rule (allow all traffic on vEthernet adapter)
-    $wslInterface = Get-NetAdapter | Where-Object {$_.Name -like "vEthernet*"} | Select-Object -First 1
-    if ($wslInterface) {
-        New-NetFirewallRule -DisplayName "WSL2 Network Interface" `
-            -Direction Both -Action Allow -InterfaceAlias $wslInterface.Name `
-            -Description "Erlaubt Netzwerkverkehr über WSL2 vEthernet Adapter" | Out-Null
-        Write-InstallLog -Message "  Firewall-Regel 'WSL2 Network Interface' erstellt ($($wslInterface.Name))." -Level Info
+    $wslInterfaces = Get-NetAdapter | Where-Object {$_.Name -like "vEthernet*"}
+    foreach ($wslInterface in $wslInterfaces) {
+        # Create separate inbound and outbound rules
+        New-NetFirewallRule -DisplayName "WSL2 Network Interface Inbound ($($wslInterface.Name))" `
+            -Direction Inbound -Action Allow -InterfaceAlias $wslInterface.Name `
+            -Description "Erlaubt eingehenden Netzwerkverkehr über WSL2 vEthernet Adapter" | Out-Null
+        New-NetFirewallRule -DisplayName "WSL2 Network Interface Outbound ($($wslInterface.Name))" `
+            -Direction Outbound -Action Allow -InterfaceAlias $wslInterface.Name `
+            -Description "Erlaubt ausgehenden Netzwerkverkehr über WSL2 vEthernet Adapter" | Out-Null
+        Write-InstallLog -Message "  Firewall-Regeln für 'WSL2 Network Interface' erstellt ($($wslInterface.Name))." -Level Info
     }
 } catch {
     Write-InstallLog -Message "Warnung: Firewall-Regeln konnten nicht erstellt werden: $_" -Level Warning
