@@ -350,25 +350,33 @@ Add-LocalGroupMember -Group "Users" -Member "developer"
 Get-LocalUser developer | Select-Object Name, Enabled, PasswordNeverExpires
 ```
 
-### Optional: GPO-Restriktionen für Standard-Benutzer anwenden
+### Optional: GPO-Restriktionen für Standard-Benutzer anwenden (via PowerShell)
 
 ```powershell
-# Lokale Gruppenrichtlinien öffnen (als ITAdmin):
-gpedit.msc
+# Als ITAdmin ausführen — setzt Registry-Keys für den Benutzer "developer"
 
-# Empfohlene Einstellungen unter:
-# Benutzerkonfiguration → Administrative Vorlagen:
+# 1. Software-Installation verhindern
+New-Item -Path "HKCU:\Software\Policies\Microsoft\Windows" -Force | Out-Null
+Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows" -Name "NoRun" -Value 1 -Type DWORD -Force
 
-# 1. Software-Installation verhindern:
-#   System → Installation von Removable Storage Devices verhindern
-#   Windows-Komponenten → Windows Installer → Installationen deaktivieren
+# Windows Installer deaktivieren
+New-Item -Path "HKCU:\Software\Policies\Microsoft\WindowsInstaller" -Force | Out-Null
+Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\WindowsInstaller" -Name "DisableUserControlledInstallations" -Value 1 -Type DWORD -Force
 
-# 2. Registry-Zugriff einschränken:
-#   System → Zugriff auf Registrierungsinstrumente und -funktionen beschränken
+# 2. Registry-Zugriff einschränken (regedit, reg.exe blockieren)
+New-Item -Path "HKCU:\Software\Policies\Microsoft\Windows\System" -Force | Out-Null
+Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\System" -Name "DisableRegistryTools" -Value 1 -Type DWORD -Force
 
-# 3. PowerShell-Execution Policy (optional):
-#   Windows-Subsystem für Linux → WSL-Installationen erlauben: JA
+# 3. WSL-Installationen verhindern (optional)
+New-Item -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsSubsystemForLinux" -Force | Out-Null
+Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsSubsystemForLinux" -Name "AllowWSLInstallations" -Value 0 -Type DWORD -Force
+
+# 4. Control Panel Programme und Funktionen deaktivieren
+New-Item -Path "HKCU:\Software\Policies\Microsoft\Windows\Control Panel" -Force | Out-Null
+Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\Control Panel" -Name "ProhibitedPages" -Value "Programs;System;DateAndTime;Desktop;Display;Mouse;Keyboard;RegionalOptions;Accessibility;Sounds;Themes;Personalization;Default Programs;SyncCenter;Parental Controls;All Items" -Type String -Force
 ```
+
+**Hinweis:** Diese Registry-Keys gelten für den aktuellen Benutzer. Um sie auf "developer" anzuwenden, musst du als developer eingeloggt sein oder `Load-Hive` verwenden.
 
 ### Schnell zwischen Konten wechseln zum Testen
 
