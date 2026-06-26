@@ -46,18 +46,22 @@ Before deploying this package via Microsoft Intune, SCCM, or testing it locally,
    ```json
    {
        "CorporateSettings": {
-           "MaxMemory": "8GB",      // Limits WSL memory so developer laptops don't freeze
+           "MaxMemory": "8GB",
            "Processors": "4",
-           "MTU": 1350              // Crucial for VPNs: low MTU prevents freezing 'podman pull'
+           "MTU": 1350
        },
        "Registries": {
-           "AllowedSearchRegistry": "registry.your-company.com" // Zero-Trust Whitelist
+           "AllowedSearchRegistry": "registry.your-company.com"
        },
        "Paths": {
            "SecureStorage": "C:\\ProgramData\\CorporateIT\\Podman"
        }
    }
    ```
+   * `MaxMemory` / `Processors`: Limits WSL so developer laptops don't freeze.
+   * `MTU`: **Crucial for VPNs.** Low MTU prevents `podman pull` from hanging. `1350` is a safe default; use `1300` if issues persist inside Cisco AnyConnect.
+   * `AllowedSearchRegistry`: The only registry developers can pull from (Zero-Trust whitelist). **Replace `registry.your-company.com` with your actual registry before deployment.**
+   * `SecureStorage`: The target directory where scripts are copied by `Install-Master.ps1`. All other scripts derive this path from the config automatically.
 
 ---
 
@@ -87,8 +91,13 @@ To deploy this across your organization using Microsoft Intune:
    `powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File ".\Install-Master.ps1"`
 4. **Uninstall Command:** 
    `"%ProgramFiles%\Podman Desktop\Uninstall Podman Desktop.exe" /S`
+   > ⚠️ The uninstall command removes the application binary but does **not** clean up scheduled tasks or the `SecureStorage` directory. After uninstalling, manually remove:
+   > * Scheduled tasks `Podman-User-Init` and `Podman-SelfHeal` (via `schtasks /delete`)
+   > * The directory defined in `Paths.SecureStorage` (default: `C:\ProgramData\CorporateIT\Podman`)
+   > * The `DOCKER_HOST` machine environment variable
 5. **Install Behavior:** `System` (Very important!)
 6. **Device Restart Behavior:** `Determine behavior based on return codes` (Force a restart so WSL initializes).
+   * Add return code **`3010`** → "Soft reboot required". `Install-Master.ps1` exits with this code so Intune knows to schedule a restart.
 7. **Detection Rule:**
    * Rule type: File/Folder
    * Path: `C:\Program Files\Podman Desktop`
