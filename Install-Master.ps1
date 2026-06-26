@@ -1,93 +1,236 @@
 <#
 .SYNOPSIS
-    Haupt-Installer. Aktiviert WSL, installiert Podman, richtet Tasks ein.
-    SAFE CODE: Validiert Installer-Pfad und Rechte.
+    Haupt-Installer (Robust). Aktiviert WSL, installiert Podman, richtet Tasks ein.
+    SAFE CODE: Validiert Installer-Pfad und Rechte. Idempotent - kann mehrfach ausgeführt werden.
 #>
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Sicherheits-Check: Ist Skript Admin?
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw "Dieses Skript muss als Administrator ausgefuehrt werden!"
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+function Write-InstallLog {
+    param(
+        [Parameter(Mandatory)] [string]$Message,
+        [ValidateSet('Info', 'Warning', 'Error')] [string]$Level = 'Info'
+    )
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    switch ($Level) {
+        'Info' { Write-Host "[$timestamp] INFO:  $Message" -ForegroundColor Cyan }
+        'Warning' { Write-Host "[$timestamp] WARN:  $Message" -ForegroundColor Yellow }
+        'Error' { Write-Host "[$timestamp] ERROR: $Message" -ForegroundColor Red }
+    }
 }
+
+function Test-Administrator {
+    return ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+# ============================================================================
+# MAIN INSTALLATION LOGIC
+# ============================================================================
 
 $InstallDir  = $PSScriptRoot
 $ExePath     = Join-Path -Path $InstallDir -ChildPath "podman-desktop-setup.exe"
 $ConfigPath  = Join-Path -Path $InstallDir -ChildPath "podman-config.json"
 
-if (-not (Test-Path -Path $ExePath)) { throw "Installer $ExePath nicht gefunden!" }
-if (-not (Test-Path -Path $ConfigPath)) { throw "Konfigurationsdatei $ConfigPath nicht gefunden!" }
+# -----------------------------------------------------------------------------
+# STEP 0: PRE-CHECKS
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Starte Install-Master.ps1..." -Level Info
 
-# SecureDir aus podman-config.json lesen, damit eine zentrale Stelle für den Pfad gilt.
+if (-not (Test-Administrator)) {
+    Write-InstallLog -Message "Fehler: Skript muss als Administrator ausgeführt werden!" -Level Error
+    exit 1
+}
+
+if (-not (Test-Path -Path $ExePath)) {
+    Write-InstallLog -Message "Fehler: Installer $ExePath nicht gefunden!" -Level Error
+    exit 2
+}
+
+if (-not (Test-Path -Path $ConfigPath)) {
+    Write-InstallLog -Message "Fehler: Konfigurationsdatei $ConfigPath nicht gefunden!" -Level Error
+    exit 3
+}
+
+# SecureDir aus podman-config.json lesen
 $Config    = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
 $SecureDir = $Config.Paths.SecureStorage
 
-Write-Host "[1/4] Erstelle sicheres Verzeichnis '$SecureDir' und kopiere Dateien..." -ForegroundColor Cyan
-if (-not (Test-Path -Path $SecureDir)) { New-Item -Path $SecureDir -ItemType Directory -Force | Out-Null }
-
-Copy-Item -Path "$InstallDir\podman-config.json"    -Destination $SecureDir -Force
-Copy-Item -Path "$InstallDir\Init-PodmanUser.ps1"   -Destination $SecureDir -Force
-Copy-Item -Path "$InstallDir\SelfHeal-Podman.ps1"   -Destination $SecureDir -Force
-if (Test-Path -Path "$InstallDir\CorporateRootCA.cer") {
-    Copy-Item -Path "$InstallDir\CorporateRootCA.cer" -Destination $SecureDir -Force
+# -----------------------------------------------------------------------------
+# STEP 1: CLEANUP - Entferne alte Scheduled Tasks (Idempotenz)
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Entferne existierende Podman-* Scheduled Tasks..." -Level Info
+try {
+    $oldTasks = Get-ScheduledTask | Where-Object {$_.TaskName -like "Podman-*"}
+    foreach ($task in $oldTasks) {
+        Write-InstallLog -Message "  Entferne Task: $($task.TaskName)" -Level Info
+        Unregister-ScheduledTask -TaskName $task.TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
+} catch {
+    Write-InstallLog -Message "Warnung beim Cleanup alter Tasks: $_" -Level Warning
 }
 
-# Lokale Gruppe 'podman-users' anlegen (idempotent — Fehler bei bereits vorhandener Gruppe ignorieren).
-# Nur Mitglieder dieser Gruppe erhalten den Podman-User-Init-Task und Lesezugriff auf SecureStorage.
-Write-Host "    Erstelle lokale Gruppe 'podman-users'..." -ForegroundColor Cyan
-New-LocalGroup -Name "podman-users" `
-    -Description "Autorisierte Podman-Entwickler (IT-verwaltet)" `
-    -ErrorAction SilentlyContinue
+# -----------------------------------------------------------------------------
+# STEP 2: SECURE STORAGE SETUP
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Erstelle sicheres Verzeichnis '$SecureDir'..." -Level Info
+try {
+    if (-not (Test-Path -Path $SecureDir)) {
+        New-Item -Path $SecureDir -ItemType Directory -Force | Out-Null
+        Write-InstallLog -Message "  Verzeichnis erstellt." -Level Info
+    } else {
+        Write-InstallLog -Message "  Verzeichnis existiert bereits." -Level Info
+    }
+} catch {
+    Write-InstallLog -Message "Fehler beim Erstellen von SecureStorage: $_" -Level Error
+    exit 4
+}
 
-# NTFS-Berechtigungen auf SecureDir setzen:
-# Vererbung aufheben, dann explizit: SYSTEM=Full, Admins=Full, podman-users=ReadExecute.
-# Standard-Users und Everyone werden NICHT gewährt — nur podman-users-Mitglieder dürfen lesen.
-Write-Host "    Setze NTFS-ACLs auf '$SecureDir'..." -ForegroundColor Cyan
-& icacls $SecureDir /inheritance:r                          | Out-Null
-& icacls $SecureDir /grant "SYSTEM:(OI)(CI)F"              | Out-Null
-& icacls $SecureDir /grant "BUILTIN\Administrators:(OI)(CI)F" | Out-Null
-& icacls $SecureDir /grant "podman-users:(OI)(CI)RX"       | Out-Null
-& icacls $SecureDir /remove "BUILTIN\Users"                 | Out-Null
-& icacls $SecureDir /remove "Everyone"                      | Out-Null
+# Dateien kopieren mit Verifizierung
+$filesToCopy = @(
+    @{ Source = "podman-config.json" },
+    @{ Source = "Init-PodmanUser.ps1" },
+    @{ Source = "SelfHeal-Podman.ps1" }
+)
 
-Write-Host "[2/4] Aktiviere WSL2 Features (VirtualMachinePlatform)..." -ForegroundColor Cyan
-Enable-WindowsOptionalFeature -Online -FeatureName "VirtualMachinePlatform"             -All -NoRestart -ErrorAction SilentlyContinue
-Enable-WindowsOptionalFeature -Online -FeatureName "Microsoft-Windows-Subsystem-Linux"  -All -NoRestart -ErrorAction SilentlyContinue
+foreach ($file in $filesToCopy) {
+    $sourcePath = Join-Path -Path $InstallDir -ChildPath $file.Source
+    if (Test-Path -Path $sourcePath) {
+        Copy-Item -Path $sourcePath -Destination $SecureDir -Force
+        Write-InstallLog -Message "  Kopiert: $($file.Source)" -Level Info
+    }
+}
 
-Write-Host "[3/4] Installiere Podman Desktop..." -ForegroundColor Cyan
-$installProc = Start-Process -FilePath $ExePath -ArgumentList "/S", "/allusers" -Wait -NoNewWindow -PassThru
-if ($installProc.ExitCode -ne 0) { throw "Fehler bei der Installation der .exe (ExitCode: $($installProc.ExitCode))" }
+# CorporateRootCA.cer optional kopieren
+if (Test-Path -Path "$InstallDir\CorporateRootCA.cer") {
+    Copy-Item -Path "$InstallDir\CorporateRootCA.cer" -Destination $SecureDir -Force
+    Write-InstallLog -Message "  Kopiert: CorporateRootCA.cer" -Level Info
+}
 
-Write-Host "[4/4] Registriere Scheduled Tasks (User-Init und Self-Healing)..." -ForegroundColor Cyan
+# -----------------------------------------------------------------------------
+# STEP 3: NTFS ACL SETUP
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Erstelle lokale Gruppe 'podman-users'..." -Level Info
+try {
+    New-LocalGroup -Name "podman-users" `
+        -Description "Autorisierte Podman-Entwickler (IT-verwaltet)" `
+        -ErrorAction SilentlyContinue
+} catch {
+    Write-InstallLog -Message "Warnung: Gruppe 'podman-users' konnte nicht erstellt werden: $_" -Level Warning
+}
 
-# Task 1: User Init (läuft als Mitglied von 'podman-users' beim Login, einmalig bis zur Selbst-Deregistrierung).
-# Die Einschränkung auf 'podman-users' (statt BUILTIN\Users) stellt sicher, dass nur autorisierte
-# Entwickler eine Podman-Maschine erhalten.
-$UserAction    = New-ScheduledTaskAction -Execute "powershell.exe" `
-    -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$SecureDir\Init-PodmanUser.ps1`""
-$UserTrigger   = New-ScheduledTaskTrigger -AtLogon
-$UserPrincipal = New-ScheduledTaskPrincipal -GroupId "podman-users" -RunLevel Limited
-Register-ScheduledTask -TaskName "Podman-User-Init" `
-    -Action $UserAction -Trigger $UserTrigger -Principal $UserPrincipal -Force | Out-Null
+Write-InstallLog -Message "Setze NTFS-ACLs auf '$SecureDir'..." -Level Info
+try {
+    & icacls $SecureDir /inheritance:r                          | Out-Null
+    & icacls $SecureDir /grant "SYSTEM:(OI)(CI)F"              | Out-Null
+    & icacls $SecureDir /grant "BUILTIN\Administrators:(OI)(CI)F" | Out-Null
+    if (Get-LocalGroup -Name "podman-users" -ErrorAction SilentlyContinue) {
+        & icacls $SecureDir /grant "podman-users:(OI)(CI)RX"   | Out-Null
+    }
+    & icacls $SecureDir /remove "BUILTIN\Users"                | Out-Null
+    & icacls $SecureDir /remove "Everyone"                     | Out-Null
+} catch {
+    Write-InstallLog -Message "Warnung: ACLs konnten nicht vollständig gesetzt werden: $_" -Level Warning
+}
 
-# Task 2: Self Healing (läuft als SYSTEM bei Boot und bei VPN-Ereignissen von Cisco AnyConnect)
-$HealAction      = New-ScheduledTaskAction -Execute "powershell.exe" `
-    -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$SecureDir\SelfHeal-Podman.ps1`""
-$HealTriggerBoot = New-ScheduledTaskTrigger -AtStartup
+# -----------------------------------------------------------------------------
+# STEP 4: WSL FEATURES ACTIVATION
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Aktiviere WSL2 Features..." -Level Info
+try {
+    Enable-WindowsOptionalFeature -Online -FeatureName "VirtualMachinePlatform"             -All -NoRestart -ErrorAction SilentlyContinue | Out-Null
+    Enable-WindowsOptionalFeature -Online -FeatureName "Microsoft-Windows-Subsystem-Linux"  -All -NoRestart -ErrorAction SilentlyContinue | Out-Null
+} catch {
+    Write-InstallLog -Message "Warnung: WSL Features konnten nicht aktiviert werden: $_" -Level Warning
+}
 
-# Zusätzlicher Trigger bei Cisco AnyConnect VPN-Verbindung (anhand des Application-Eventlogs).
-# EventId 2039 = "Connected to VPN". Falls AnyConnect nicht vorhanden, wird der Trigger ignoriert.
-$HealTriggerVPN  = New-ScheduledTaskTrigger -OnEvent `
-    -Log "Application" -Source "acvpnagent" -EventId 2039
+# -----------------------------------------------------------------------------
+# STEP 5: PODMAN DESKTOP INSTALLATION
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Installiere Podman Desktop..." -Level Info
+try {
+    $installProc = Start-Process -FilePath $ExePath -ArgumentList "/S", "/allusers" -Wait -NoNewWindow -PassThru
+    if ($installProc.ExitCode -ne 0) {
+        Write-InstallLog -Message "Fehler bei der Installation (ExitCode: $($installProc.ExitCode))" -Level Error
+        exit 5
+    }
+    Write-InstallLog -Message "Podman Desktop erfolgreich installiert." -Level Info
+} catch {
+    Write-InstallLog -Message "Fehler beim Starten des Installers: $_" -Level Error
+    exit 6
+}
 
-Register-ScheduledTask -TaskName "Podman-SelfHeal" `
-    -Action $HealAction `
-    -Trigger @($HealTriggerBoot, $HealTriggerVPN) `
-    -User "SYSTEM" -RunLevel Highest -Force | Out-Null
+# -----------------------------------------------------------------------------
+# STEP 6: SCHEDULED TASKS REGISTRATION
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Registriere Scheduled Tasks..." -Level Info
 
-Write-Host "`n=== Installation abgeschlossen! ===" -ForegroundColor Green
-Write-Host "WICHTIG: Bitte starte den Computer jetzt neu, damit WSL aktiviert wird." -ForegroundColor Yellow
+$tasksRegistered = @()
+
+try {
+    # Task 1: User Init (läuft als Mitglied von 'podman-users' beim Login)
+    $UserAction    = New-ScheduledTaskAction -Execute "powershell.exe" `
+        -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$SecureDir\Init-PodmanUser.ps1`""
+    $UserTrigger   = New-ScheduledTaskTrigger -AtLogon
+    
+    # Prüfen ob Gruppe existiert, falls nicht: Fallback zu BUILTIN\Users
+    if (Get-LocalGroup -Name "podman-users" -ErrorAction SilentlyContinue) {
+        $UserPrincipal = New-ScheduledTaskPrincipal -GroupId "podman-users" -RunLevel Limited
+    } else {
+        Write-InstallLog -Message "Warnung: Gruppe 'podman-users' nicht gefunden, verwende BUILTIN\Users" -Level Warning
+        $UserPrincipal = New-ScheduledTaskPrincipal -GroupId "BUILTIN\Users" -RunLevel Limited
+    }
+    
+    Register-ScheduledTask -TaskName "Podman-User-Init" `
+        -Action $UserAction -Trigger $UserTrigger -Principal $UserPrincipal -Force | Out-Null
+    $tasksRegistered += "Podman-User-Init"
+    Write-InstallLog -Message "  Task 'Podman-User-Init' registriert." -Level Info
+} catch {
+    Write-InstallLog -Message "Fehler beim Registrieren von Podman-User-Init: $_" -Level Error
+}
+
+try {
+    # Task 2: Self Healing (läuft als SYSTEM bei Boot und bei VPN-Ereignissen)
+    $HealAction      = New-ScheduledTaskAction -Execute "powershell.exe" `
+        -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$SecureDir\SelfHeal-Podman.ps1`""
+    $HealTriggerBoot = New-ScheduledTaskTrigger -AtStartup
+    
+    # Event-Trigger für Cisco AnyConnect VPN (KORREKT: -LogName und -Id)
+    $HealTriggerVPN  = New-ScheduledTaskTrigger -OnEvent `
+        -LogName "Application" `
+        -Source "acvpnagent" `
+        -Id 2039
+    
+    Register-ScheduledTask -TaskName "Podman-SelfHeal" `
+        -Action $HealAction `
+        -Trigger @($HealTriggerBoot, $HealTriggerVPN) `
+        -User "SYSTEM" -RunLevel Highest -Force | Out-Null
+    $tasksRegistered += "Podman-SelfHeal"
+    Write-InstallLog -Message "  Task 'Podman-SelfHeal' registriert." -Level Info
+} catch {
+    Write-InstallLog -Message "Fehler beim Registrieren von Podman-SelfHeal: $_" -Level Error
+}
+
+# -----------------------------------------------------------------------------
+# STEP 7: VALIDATION
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Validiere Installation..." -Level Info
+$expectedTasks = @("Podman-User-Init", "Podman-SelfHeal")
+$missingTasks = $expectedTasks | Where-Object { $_ -notin $tasksRegistered }
+
+if ($missingTasks.Count -gt 0) {
+    Write-InstallLog -Message "WARNUNG: Folgende Tasks wurden NICHT erstellt: $($missingTasks -join ', ')" -Level Warning
+}
+
+# -----------------------------------------------------------------------------
+# STEP 8: COMPLETION
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "=== Installation abgeschlossen! ===" -Level Info
+Write-InstallLog -Message "WICHTIG: Bitte starte den Computer jetzt neu, damit WSL aktiviert wird." -Level Warning
 
 # Exit-Code 3010 signalisiert Intune/SCCM, dass ein Neustart erforderlich ist.
-# Ohne diesen Code erkennt Intune den notwendigen Neustart nicht automatisch.
 exit 3010
