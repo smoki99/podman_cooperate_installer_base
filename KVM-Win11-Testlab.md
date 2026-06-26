@@ -311,6 +311,9 @@ Start-Service sshd
 
 ## 4. Snapshots: Workflow
 
+> **WICHTIG:** Diese VM verwendet OVMF UEFI (pflash) Firmware, was interne libvirt-Snapshots nicht unterstützt.
+> Die folgenden Befehle verwenden externe qcow2-Backups als Alternative.
+
 ### IP-Adresse der VM ermitteln
 
 ```bash
@@ -321,57 +324,80 @@ sudo virsh domifaddr win11-podman-test
 arp -n | grep virbr
 ```
 
-### Snapshot-Befehle
+### Snapshot-Befehle (externe qcow2-Backups)
 
 ```bash
-# Snapshot erstellen (VM kann laufen ODER gestoppt sein)
-# Empfehlung: VM vorher sauber herunterfahren für konsistente Snapshots
-sudo virsh snapshot-create-as \
-  --domain win11-podman-test \
-  --name "00-fresh-win11" \
-  --description "Frische Windows 11 Installation nach allen Treibern, vor Podman"
+DISK="/mnt/data2/virtimages/win11-podman-test.qcow2"
+BACKUP_DIR="/mnt/data2/virtimages/backups"
+mkdir -p "$BACKUP_DIR"
+
+# Snapshot erstellen (VM stoppen für konsistente Backups)
+sudo virsh shutdown win11-podman-test
+sleep 30  # Warten bis VM gestoppt ist
+sudo cp "$DISK" "$BACKUP_DIR/00-fresh-win11.qcow2"
+echo "Snapshot '00-fresh-win11' erstellt"
+sudo virsh start win11-podman-test
 
 # Alle Snapshots auflisten
-sudo virsh snapshot-list win11-podman-test --tree
-
-# Details zu einem Snapshot anzeigen
-sudo virsh snapshot-info win11-podman-test "00-fresh-win11"
+ls -lh "$BACKUP_DIR/"
 
 # Zu einem Snapshot zurückwechseln
-sudo virsh snapshot-revert win11-podman-test "00-fresh-win11"
-sudo virsh start win11-podman-test   # VM danach neu starten
+sudo virsh shutdown win11-podman-test
+sleep 30
+sudo cp "$BACKUP_DIR/00-fresh-win11.qcow2" "$DISK"
+sudo virsh start win11-podman-test
+echo "Zurückgesetzt auf Snapshot '00-fresh-win11'"
 
 # Einzelnen Snapshot löschen
-sudo virsh snapshot-delete win11-podman-test "00-fresh-win11"
+sudo rm "$BACKUP_DIR/00-fresh-win11.qcow2"
 ```
 
 ### Empfohlene Snapshot-Struktur für dieses Projekt
 
 ```bash
-# Snapshot 1: Nach Windows-Grundinstallation + Treiber + OpenSSH
-sudo virsh snapshot-create-as win11-podman-test \
-  --name "00-fresh-win11" \
-  --description "Windows 11 Pro, Virtio-Treiber, OpenSSH aktiv. Kein Podman."
+DISK="/mnt/data2/virtimages/win11-podman-test.qcow2"
+BACKUP_DIR="/mnt/data2/virtimages/backups"
+mkdir -p "$BACKUP_DIR"
 
-# Snapshot 2: Nach dem Kopieren der Deployment-Dateien, vor Run-Test.cmd
-sudo virsh snapshot-create-as win11-podman-test \
-  --name "01-pre-install" \
-  --description "Deployment-Paket in C:\Podman-Deployment kopiert. Bereit zum Testen."
+# Backup 1: Nach Windows-Grundinstallation + Treiber + OpenSSH
+sudo virsh shutdown win11-podman-test && sleep 30
+sudo cp "$DISK" "$BACKUP_DIR/00-fresh-win11.qcow2"
+sudo virsh start win11-podman-test
+echo "Backup '00-fresh-win11' erstellt: Windows 11 Pro, Virtio-Treiber, OpenSSH aktiv."
 
-# Snapshot 3: Nach Install-Master.ps1, vor dem Reboot
-sudo virsh snapshot-create-as win11-podman-test \
-  --name "02-post-install-pre-reboot" \
-  --description "Install-Master.ps1 abgeschlossen. Scheduled Tasks erstellt. Warte auf Reboot."
+# Backup 2: Nach dem Kopieren der Deployment-Dateien, vor Run-Test.cmd
+sudo virsh shutdown win11-podman-test && sleep 30
+sudo cp "$DISK" "$BACKUP_DIR/01-pre-install.qcow2"
+sudo virsh start win11-podman-test
+echo "Backup '01-pre-install' erstellt: Deployment-Paket kopiert, bereit zum Testen."
 
-# Snapshot 4: Nach erstem Reboot, WSL aktiviert
-sudo virsh snapshot-create-as win11-podman-test \
-  --name "03-post-reboot" \
-  --description "WSL2 aktiv. Bereit für User-Init-Test."
+# Backup 3: Nach Install-Master.ps1, vor dem Reboot
+sudo virsh shutdown win11-podman-test && sleep 30
+sudo cp "$DISK" "$BACKUP_DIR/02-post-install-pre-reboot.qcow2"
+sudo virsh start win11-podman-test
+echo "Backup '02-post-install-pre-reboot' erstellt: Install-Master.ps1 abgeschlossen."
 
-# Snapshot 5: Nach erfolgreichem User-Init
-sudo virsh snapshot-create-as win11-podman-test \
-  --name "04-post-user-init" \
-  --description "Podman Machine laeuft. Zero-Trust aktiv. Vollstaendig konfiguriert."
+# Backup 4: Nach erstem Reboot, WSL aktiviert
+sudo virsh shutdown win11-podman-test && sleep 30
+sudo cp "$DISK" "$BACKUP_DIR/03-post-reboot.qcow2"
+sudo virsh start win11-podman-test
+echo "Backup '03-post-reboot' erstellt: WSL2 aktiv."
+
+# Backup 5: Nach erfolgreichem User-Init
+sudo virsh shutdown win11-podman-test && sleep 30
+sudo cp "$DISK" "$BACKUP_DIR/04-post-user-init.qcow2"
+sudo virsh start win11-podman-test
+echo "Backup '04-post-user-init' erstellt: Vollstaendig konfiguriert."
+```
+
+### Schneller Revert-Befehl (Alias)
+
+```bash
+# In ~/.bashrc hinzufügen für schnellen Zugriff:
+alias revert-snapshot='sudo virsh shutdown win11-podman-test && sleep 30 && sudo cp /mnt/data2/virtimages/backups/01-pre-install.qcow2 /mnt/data2/virtimages/win11-podman-test.qcow2 && sudo virsh start win11-podman-test'
+
+# Dann einfach aufrufen:
+revert-snapshot  # Setzt auf '01-pre-install' zurück
 ```
 
 ---
