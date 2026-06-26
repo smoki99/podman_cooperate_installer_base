@@ -270,52 +270,35 @@ try {
     # Machine-scope installation path (all users)
     $podmanExe = "C:\Program Files\Podman\podman.exe"
     
-    # IMPORTANT: Run podman commands as non-elevated user to force WSL2 provider.
-    # When running as Administrator, podman defaults to Hyper-V. Dropping privileges
+    # Verify podman.exe exists before proceeding
+    if (-not (Test-Path $podmanExe)) {
+        Write-InstallLog -Message "  ERROR: podman.exe not found at $podmanExe" -Level Error
+        throw "Podman executable not installed"
+    }
+    
+    # IMPORTANT: Set PODMAN_PROVIDER environment variable to force WSL2.
+    # When running as Administrator, podman defaults to Hyper-V. Setting this env var
     # forces it to use WSL2 which is what we want for this deployment.
-    Write-InstallLog -Message "  Running podman machine commands as non-elevated user (forces WSL2)..." -Level Info
+    Write-InstallLog -Message "  Forcing WSL2 provider via PODMAN_PROVIDER environment variable..." -Level Info
+    $env:PODMAN_PROVIDER = "wsl"
     
-    # Check if machine already exists (run as non-elevated)
-    $listOutput = Start-Process -FilePath $podmanExe `
-        -ArgumentList "machine", "list" `
-        -Verb RunAs:$false `  # Drop admin rights to force WSL2 provider
-        -Wait -NoNewWindow `
-        -RedirectStandardOutput "$env:TEMP\podman-list.txt" `
-        -PassThru | Out-Null
+    # Check if machine already exists
+    $listOutput = & $podmanExe machine list 2>&1 | Out-String
+    Write-InstallLog -Message "  Podman machine list output: $listOutput" -Level Info
     
-    if (Test-Path "$env:TEMP\podman-list.txt") {
-        $listContent = Get-Content "$env:TEMP\podman-list.txt" -Raw
-        Write-InstallLog -Message "  Podman machine list output: $listContent" -Level Info
-        
-        if ($listContent -match "Running|Stopped") {
-            Write-InstallLog -Message "  Podman Machine existiert bereits, starte sie..." -Level Info
-            Start-Process -FilePath $podmanExe `
-                -ArgumentList "machine", "start" `
-                -Verb RunAs:$false `  # Drop admin rights to force WSL2 provider
-                -Wait -NoNewWindow -PassThru | Out-Null
+    if ($listOutput -match "Running|Stopped") {
+        Write-InstallLog -Message "  Podman Machine existiert bereits, starte sie..." -Level Info
+        & $podmanExe machine start 2>&1 | Out-Null
+    } else {
+        Write-InstallLog -Message "  Erstelle neue Podman Machine (WSL2 runtime)..." -Level Info
+        # Initialize with WSL2 provider (forced by env var)
+        $initOutput = & $podmanExe machine init 2>&1 | Out-String
+        Write-InstallLog -Message "  Machine init output: $initOutput" -Level Info
+        if ($initOutput -notmatch "error|Error|ERROR") {
+            Write-InstallLog -Message "  Machine init erfolgreich." -Level Info
+            & $podmanExe machine start 2>&1 | Out-Null
         } else {
-            Write-InstallLog -Message "  Erstelle neue Podman Machine (WSL2 runtime)..." -Level Info
-            # Initialize machine as non-elevated user (forces WSL2, not Hyper-V)
-            Start-Process -FilePath $podmanExe `
-                -ArgumentList "machine", "init" `
-                -Verb RunAs:$false `  # Drop admin rights to force WSL2 provider
-                -Wait -NoNewWindow `
-                -RedirectStandardOutput "$env:TEMP\podman-init.txt" `
-                -PassThru | Out-Null
-            
-            if (Test-Path "$env:TEMP\podman-init.txt") {
-                $initContent = Get-Content "$env:TEMP\podman-init.txt" -Raw
-                Write-InstallLog -Message "  Machine init output: $initContent" -Level Info
-                if ($initContent -notmatch "error|Error|ERROR") {
-                    Write-InstallLog -Message "  Machine init erfolgreich." -Level Info
-                    Start-Process -FilePath $podmanExe `
-                        -ArgumentList "machine", "start" `
-                        -Verb RunAs:$false `  # Drop admin rights to force WSL2 provider
-                        -Wait -NoNewWindow -PassThru | Out-Null
-                } else {
-                    Write-InstallLog -Message "  Machine init fehlgeschlagen" -Level Warning
-                }
-            }
+            Write-InstallLog -Message "  Machine init fehlgeschlagen" -Level Warning
         }
     }
     
