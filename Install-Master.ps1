@@ -220,7 +220,7 @@ try {
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Validiere Installation..." -Level Info
 $expectedTasks = @("Podman-User-Init", "Podman-SelfHeal")
-$missingTasks = $expectedTasks | Where-Object { $_ -notin $tasksRegistered }
+$missingTasks = @($expectedTasks | Where-Object { $_ -notin $tasksRegistered })
 
 if ($missingTasks.Count -gt 0) {
     Write-InstallLog -Message "WARNUNG: Folgende Tasks wurden NICHT erstellt: $($missingTasks -join ', ')" -Level Warning
