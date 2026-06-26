@@ -200,13 +200,15 @@ try {
 }
 
 # -----------------------------------------------------------------------------
-# STEP 5.1: PODMAN CLI INSTALLATION (via MSI)
+# STEP 5.1: PODMAN CLI INSTALLATION (via MSI) - GLOBAL INSTALL WITH PATH SETUP
 # -----------------------------------------------------------------------------
-Write-InstallLog -Message "Installiere Podman CLI via MSI..." -Level Info
+Write-InstallLog -Message "Installiere Podman CLI via MSI (global)..." -Level Info
 try {
-    # Install podman-installer-windows-amd64.msi silently
+    # Install podman-installer-windows-amd64.msi silently with global installation
+    # /qn = quiet mode, no UI
+    # ALLUSERS=1 = install for all users (C:\Program Files)
     $msiProc = Start-Process -FilePath "msiexec.exe" `
-        -ArgumentList "/i", "$MsiPath", "/qn", "/norestart" `
+        -ArgumentList "/i", "$MsiPath", "/qn", "ALLUSERS=1", "/norestart" `
         -Wait -NoNewWindow -PassThru
     if ($msiProc.ExitCode -ne 0) {
         Write-InstallLog -Message "Fehler bei der MSI Installation (ExitCode: $($msiProc.ExitCode))" -Level Error
@@ -216,6 +218,56 @@ try {
 } catch {
     Write-InstallLog -Message "Fehler beim Starten der MSI Installation: $_" -Level Error
     exit 42
+}
+
+# -----------------------------------------------------------------------------
+# STEP 5.1.1: ENSURE PODMAN IS IN SYSTEM PATH (global availability)
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Stelle sicher, dass Podman im System PATH ist..." -Level Info
+try {
+    # Standard installation paths for Podman CLI
+    $possiblePodmanPaths = @(
+        "C:\Program Files\Podman\bin",
+        "$env:LOCALAPPDATA\Programs\Podman",
+        "$env:USERPROFILE\.local\bin"
+    )
+    
+    # Find the actual podman.exe location
+    $podmanExePath = $null
+    foreach ($path in $possiblePodmanPaths) {
+        if (Test-Path -Path "$path\podman.exe") {
+            $podmanExePath = $path
+            Write-InstallLog -Message "  Podman gefunden unter: $podmanExePath" -Level Info
+            break
+        }
+    }
+    
+    if (-not $podmanExePath) {
+        # Try to find podman.exe anywhere in PATH
+        $podmanInPath = Get-Command "podman.exe" -ErrorAction SilentlyContinue
+        if ($podmanInPath) {
+            $podmanExePath = Split-Path -Parent $podmanInPath.Source
+            Write-InstallLog -Message "  Podman gefunden unter: $podmanExePath (via PATH lookup)" -Level Info
+        }
+    }
+    
+    if ($podmanExePath) {
+        # Check if already in SYSTEM PATH
+        $systemPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+        
+        if ($systemPath -notlike "*$podmanExePath*") {
+            # Add to SYSTEM PATH (machine-wide, all users)
+            $newSystemPath = "$podmanExePath;$systemPath"
+            [Environment]::SetEnvironmentVariable("PATH", $newSystemPath, "Machine")
+            Write-InstallLog -Message "  Podman zum System PATH hinzugefügt: $podmanExePath" -Level Info
+        } else {
+            Write-InstallLog -Message "  Podman bereits im System PATH" -Level Info
+        }
+    } else {
+        Write-InstallLog -Message "WARNUNG: podman.exe konnte nicht gefunden werden!" -Level Warning
+    }
+} catch {
+    Write-InstallLog -Message "Warnung bei PATH Setup: $_" -Level Warning
 }
 
 # -----------------------------------------------------------------------------
