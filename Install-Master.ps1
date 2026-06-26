@@ -200,13 +200,14 @@ try {
 }
 
 # -----------------------------------------------------------------------------
-# STEP 5.1: PODMAN CLI INSTALLATION (via MSI) - GLOBAL INSTALL WITH PATH SETUP
+# STEP 5.1: PODMAN CLI INSTALLATION (via MSI) - MACHINE SCOPE (global)
 # -----------------------------------------------------------------------------
-Write-InstallLog -Message "Installiere Podman CLI via MSI (global)..." -Level Info
+Write-InstallLog -Message "Installiere Podman CLI via MSI (machine scope)..." -Level Info
 try {
-    # Install podman-installer-windows-amd64.msi silently with global installation
+    # Install podman-installer-windows-amd64.msi silently with machine-scope installation
     # /qn = quiet mode, no UI
-    # ALLUSERS=1 = install for all users (C:\Program Files)
+    # ALLUSERS=1 = install for all users to %PROGRAMFILES%\Podman
+    # The installer automatically updates the SYSTEM PATH when using machine scope
     $msiProc = Start-Process -FilePath "msiexec.exe" `
         -ArgumentList "/i", "$MsiPath", "/qn", "ALLUSERS=1", "/norestart" `
         -Wait -NoNewWindow -PassThru
@@ -214,60 +215,54 @@ try {
         Write-InstallLog -Message "Fehler bei der MSI Installation (ExitCode: $($msiProc.ExitCode))" -Level Error
         exit 41
     }
-    Write-InstallLog -Message "Podman CLI erfolgreich via MSI installiert." -Level Info
+    Write-InstallLog -Message "Podman CLI erfolgreich via MSI installiert (machine scope)." -Level Info
 } catch {
     Write-InstallLog -Message "Fehler beim Starten der MSI Installation: $_" -Level Error
     exit 42
 }
 
 # -----------------------------------------------------------------------------
-# STEP 5.1.1: ENSURE PODMAN IS IN SYSTEM PATH (global availability)
+# STEP 5.1.1: VERIFY PODMAN INSTALLATION AND PATH (machine scope)
 # -----------------------------------------------------------------------------
-Write-InstallLog -Message "Stelle sicher, dass Podman im System PATH ist..." -Level Info
+Write-InstallLog -Message "Verifiziere Podman Installation und PATH..." -Level Info
 try {
-    # Standard installation paths for Podman CLI
-    $possiblePodmanPaths = @(
-        "C:\Program Files\Podman\bin",
-        "$env:LOCALAPPDATA\Programs\Podman",
-        "$env:USERPROFILE\.local\bin"
-    )
+    # Machine-scope installation path according to official docs:
+    # %PROGRAMFILES%\Podman (not \bin subdirectory)
+    $machineScopePath = "$env:ProgramFiles\Podman"
     
-    # Find the actual podman.exe location
-    $podmanExePath = $null
-    foreach ($path in $possiblePodmanPaths) {
-        if (Test-Path -Path "$path\podman.exe") {
-            $podmanExePath = $path
-            Write-InstallLog -Message "  Podman gefunden unter: $podmanExePath" -Level Info
-            break
-        }
-    }
-    
-    if (-not $podmanExePath) {
-        # Try to find podman.exe anywhere in PATH
-        $podmanInPath = Get-Command "podman.exe" -ErrorAction SilentlyContinue
-        if ($podmanInPath) {
-            $podmanExePath = Split-Path -Parent $podmanInPath.Source
-            Write-InstallLog -Message "  Podman gefunden unter: $podmanExePath (via PATH lookup)" -Level Info
-        }
-    }
-    
-    if ($podmanExePath) {
+    if (Test-Path -Path "$machineScopePath\podman.exe") {
+        Write-InstallLog -Message "  Podman gefunden unter: $machineScopePath" -Level Info
+        
         # Check if already in SYSTEM PATH
         $systemPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
         
-        if ($systemPath -notlike "*$podmanExePath*") {
+        if ($systemPath -notlike "*$machineScopePath*") {
             # Add to SYSTEM PATH (machine-wide, all users)
-            $newSystemPath = "$podmanExePath;$systemPath"
+            $newSystemPath = "$machineScopePath;$systemPath"
             [Environment]::SetEnvironmentVariable("PATH", $newSystemPath, "Machine")
-            Write-InstallLog -Message "  Podman zum System PATH hinzugefügt: $podmanExePath" -Level Info
+            Write-InstallLog -Message "  Podman zum System PATH hinzugefügt: $machineScopePath" -Level Info
         } else {
-            Write-InstallLog -Message "  Podman bereits im System PATH" -Level Info
+            Write-InstallLog -Message "  Podman bereits im System PATH (vom Installer gesetzt)" -Level Info
         }
     } else {
-        Write-InstallLog -Message "WARNUNG: podman.exe konnte nicht gefunden werden!" -Level Warning
+        # Fallback: check user-scope path in case installer defaulted to it
+        $userScopePath = "$env:LOCALAPPDATA\Programs\Podman"
+        if (Test-Path -Path "$userScopePath\podman.exe") {
+            Write-InstallLog -Message "WARNUNG: Podman wurde im user-scope installiert ($userScopePath)" -Level Warning
+            Write-InstallLog -Message "  Füge zum User PATH hinzu..." -Level Info
+            
+            $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+            if ($userPath -notlike "*$userScopePath*") {
+                $newUserPath = "$userScopePath;$userPath"
+                [Environment]::SetEnvironmentVariable("PATH", $newUserPath, "User")
+                Write-InstallLog -Message "  Podman zum User PATH hinzugefügt" -Level Info
+            }
+        } else {
+            Write-InstallLog -Message "WARNUNG: podman.exe konnte nicht gefunden werden!" -Level Warning
+        }
     }
 } catch {
-    Write-InstallLog -Message "Warnung bei PATH Setup: $_" -Level Warning
+    Write-InstallLog -Message "Warnung bei Podman Verifikation: $_" -Level Warning
 }
 
 # -----------------------------------------------------------------------------
@@ -275,7 +270,8 @@ try {
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Initialisiere Podman Machine..." -Level Info
 try {
-    $podmanExe = "$env:USERPROFILE\.local\bin\podman.exe"
+    # Machine-scope installation path (all users)
+    $podmanExe = "C:\Program Files\Podman\podman.exe"
     
     # Check if machine already exists
     $existingMachines = & $podmanExe machine list 2>$null | Select-String "Running|Stopped" -Context 0,1
