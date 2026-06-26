@@ -277,7 +277,7 @@ try {
     } else {
         Write-InstallLog -Message "  Erstelle neue Podman Machine (WSL2 runtime)..." -Level Info
         # Initialize with WSL2 runtime (silent, no interactive prompts)
-        & $podmanExe machine init --runtime wsl 2>$null | Out-Null
+        & $podmanExe machine init --provider wsl 2>$null | Out-Null
         & $podmanExe machine start 2>$null | Out-Null
     }
     
