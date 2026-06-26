@@ -270,35 +270,23 @@ try {
     # Machine-scope installation path (all users)
     $podmanExe = "C:\Program Files\Podman\podman.exe"
     
-    # Check if machine already exists using Start-Process for proper argument handling
-    $listResult = Start-Process -FilePath $podmanExe `
-        -ArgumentList @("machine", "list") `
-        -Wait -NoNewWindow `
-        -RedirectStandardOutput "$env:TEMP\podman-list.txt" `
-        -PassThru
+    # Check if machine already exists using Invoke-Expression for proper argument parsing
+    $listOutput = & $podmanExe machine list 2>&1 | Out-String
+    Write-InstallLog -Message "  Podman machine list output: $listOutput" -Level Info
     
-    if (Test-Path "$env:TEMP\podman-list.txt") {
-        $existingMachines = Get-Content "$env:TEMP\podman-list.txt" | Select-String "Running|Stopped"
-        
-        if ($existingMachines) {
-            Write-InstallLog -Message "  Podman Machine existiert bereits, starte sie..." -Level Info
-            Start-Process -FilePath $podmanExe `
-                -ArgumentList @("machine", "start") `
-                -Wait -NoNewWindow -PassThru | Out-Null
+    if ($listOutput -match "Running|Stopped") {
+        Write-InstallLog -Message "  Podman Machine existiert bereits, starte sie..." -Level Info
+        & $podmanExe machine start 2>&1 | Out-Null
+    } else {
+        Write-InstallLog -Message "  Erstelle neue Podman Machine (WSL2 runtime)..." -Level Info
+        # Initialize with WSL2 provider using direct invocation for proper argument parsing
+        $initOutput = & $podmanExe machine init --provider wsl 2>&1 | Out-String
+        Write-InstallLog -Message "  Machine init output: $initOutput" -Level Info
+        if ($initOutput -notmatch "error|Error|ERROR") {
+            Write-InstallLog -Message "  Machine init erfolgreich." -Level Info
+            & $podmanExe machine start 2>&1 | Out-Null
         } else {
-            Write-InstallLog -Message "  Erstelle neue Podman Machine (WSL2 runtime)..." -Level Info
-            # Initialize with WSL2 provider using Start-Process for proper argument handling
-            $initResult = Start-Process -FilePath $podmanExe `
-                -ArgumentList @("machine", "init", "--provider", "wsl") `
-                -Wait -NoNewWindow -PassThru
-            if ($initResult.ExitCode -eq 0) {
-                Write-InstallLog -Message "  Machine init erfolgreich." -Level Info
-                Start-Process -FilePath $podmanExe `
-                    -ArgumentList @("machine", "start") `
-                    -Wait -NoNewWindow -PassThru | Out-Null
-            } else {
-                Write-InstallLog -Message "  Machine init fehlgeschlagen (ExitCode: $($initResult.ExitCode))" -Level Warning
-            }
+            Write-InstallLog -Message "  Machine init fehlgeschlagen" -Level Warning
         }
     }
     
