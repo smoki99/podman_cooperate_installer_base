@@ -28,6 +28,7 @@ Your deployment package must contain the following files in a single folder:
  ┣ 📜 Install-Master.ps1            (Phase 1: SYSTEM context installer)
  ┣ 📜 Init-PodmanUser.ps1           (Phase 2: USER context initializer)
  ┣ 📜 SelfHeal-Podman.ps1           (Phase 3: Boot-time maintenance script)
+ ┣ 📜 PreReboot-Checklist.md        (Pre-reboot validation guide)
  ┗ 📜 Run-Test.cmd                  (Helper script for local manual testing)
 ```
 
@@ -74,10 +75,11 @@ If you are the IT administrator testing this package on a test machine:
 3. Double-click the **`Run-Test.cmd`** file.
 4. Accept the UAC (Admin prompt).
 5. Watch the blue PowerShell console output. It will activate WSL features, copy the payload to a secure location (`C:\ProgramData\...`), install Podman Desktop silently, and register the background tasks.
-6. **REBOOT THE PC.** (Mandatory to initialize Windows Virtual Machine Platform).
-7. Log in as a standard, non-admin Developer.
-8. Wait ~30 seconds for the background `Podman-User-Init` task to finish.
-9. Open Podman Desktop. It is fully configured and ready.
+6. **OPTIONAL: Pre-Reboot Validation** - Before rebooting, you can run the automated validation script from `PreReboot-Checklist.md` to verify all components were installed correctly.
+7. **REBOOT THE PC.** (Mandatory to initialize Windows Virtual Machine Platform).
+8. Log in as a standard, non-admin Developer.
+9. Wait ~30 seconds for the background `Podman-User-Init` task to finish.
+10. Open Podman Desktop. It is fully configured and ready.
 
 ---
 
