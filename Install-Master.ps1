@@ -270,23 +270,52 @@ try {
     # Machine-scope installation path (all users)
     $podmanExe = "C:\Program Files\Podman\podman.exe"
     
-    # Check if machine already exists using Invoke-Expression for proper argument parsing
-    $listOutput = & $podmanExe machine list 2>&1 | Out-String
-    Write-InstallLog -Message "  Podman machine list output: $listOutput" -Level Info
+    # IMPORTANT: Run podman commands as non-elevated user to force WSL2 provider.
+    # When running as Administrator, podman defaults to Hyper-V. Dropping privileges
+    # forces it to use WSL2 which is what we want for this deployment.
+    Write-InstallLog -Message "  Running podman machine commands as non-elevated user (forces WSL2)..." -Level Info
     
-    if ($listOutput -match "Running|Stopped") {
-        Write-InstallLog -Message "  Podman Machine existiert bereits, starte sie..." -Level Info
-        & $podmanExe machine start 2>&1 | Out-Null
-    } else {
-        Write-InstallLog -Message "  Erstelle neue Podman Machine (WSL2 runtime)..." -Level Info
-        # Initialize with WSL2 provider using direct invocation for proper argument parsing
-        $initOutput = & $podmanExe machine init --provider wsl 2>&1 | Out-String
-        Write-InstallLog -Message "  Machine init output: $initOutput" -Level Info
-        if ($initOutput -notmatch "error|Error|ERROR") {
-            Write-InstallLog -Message "  Machine init erfolgreich." -Level Info
-            & $podmanExe machine start 2>&1 | Out-Null
+    # Check if machine already exists (run as non-elevated)
+    $listOutput = Start-Process -FilePath $podmanExe `
+        -ArgumentList "machine", "list" `
+        -Verb RunAs:$false `  # Drop admin rights to force WSL2 provider
+        -Wait -NoNewWindow `
+        -RedirectStandardOutput "$env:TEMP\podman-list.txt" `
+        -PassThru | Out-Null
+    
+    if (Test-Path "$env:TEMP\podman-list.txt") {
+        $listContent = Get-Content "$env:TEMP\podman-list.txt" -Raw
+        Write-InstallLog -Message "  Podman machine list output: $listContent" -Level Info
+        
+        if ($listContent -match "Running|Stopped") {
+            Write-InstallLog -Message "  Podman Machine existiert bereits, starte sie..." -Level Info
+            Start-Process -FilePath $podmanExe `
+                -ArgumentList "machine", "start" `
+                -Verb RunAs:$false `  # Drop admin rights to force WSL2 provider
+                -Wait -NoNewWindow -PassThru | Out-Null
         } else {
-            Write-InstallLog -Message "  Machine init fehlgeschlagen" -Level Warning
+            Write-InstallLog -Message "  Erstelle neue Podman Machine (WSL2 runtime)..." -Level Info
+            # Initialize machine as non-elevated user (forces WSL2, not Hyper-V)
+            Start-Process -FilePath $podmanExe `
+                -ArgumentList "machine", "init" `
+                -Verb RunAs:$false `  # Drop admin rights to force WSL2 provider
+                -Wait -NoNewWindow `
+                -RedirectStandardOutput "$env:TEMP\podman-init.txt" `
+                -PassThru | Out-Null
+            
+            if (Test-Path "$env:TEMP\podman-init.txt") {
+                $initContent = Get-Content "$env:TEMP\podman-init.txt" -Raw
+                Write-InstallLog -Message "  Machine init output: $initContent" -Level Info
+                if ($initContent -notmatch "error|Error|ERROR") {
+                    Write-InstallLog -Message "  Machine init erfolgreich." -Level Info
+                    Start-Process -FilePath $podmanExe `
+                        -ArgumentList "machine", "start" `
+                        -Verb RunAs:$false `  # Drop admin rights to force WSL2 provider
+                        -Wait -NoNewWindow -PassThru | Out-Null
+                } else {
+                    Write-InstallLog -Message "  Machine init fehlgeschlagen" -Level Warning
+                }
+            }
         }
     }
     
