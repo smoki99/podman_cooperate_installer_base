@@ -271,21 +271,31 @@ try {
     $podmanExe = "C:\Program Files\Podman\podman.exe"
     
     # Check if machine already exists using Start-Process for proper argument handling
-    $listResult = Start-Process -FilePath $podmanExe `n        -ArgumentList @("machine", "list") `n        -Wait -NoNewWindow `n        -RedirectStandardOutput "$env:TEMP\podman-list.txt" `n        -PassThru
+    $listResult = Start-Process -FilePath $podmanExe `
+        -ArgumentList @("machine", "list") `
+        -Wait -NoNewWindow `
+        -RedirectStandardOutput "$env:TEMP\podman-list.txt" `
+        -PassThru
     
     if (Test-Path "$env:TEMP\podman-list.txt") {
         $existingMachines = Get-Content "$env:TEMP\podman-list.txt" | Select-String "Running|Stopped"
         
         if ($existingMachines) {
             Write-InstallLog -Message "  Podman Machine existiert bereits, starte sie..." -Level Info
-            Start-Process -FilePath $podmanExe `n                -ArgumentList @("machine", "start") `n                -Wait -NoNewWindow -PassThru | Out-Null
+            Start-Process -FilePath $podmanExe `
+                -ArgumentList @("machine", "start") `
+                -Wait -NoNewWindow -PassThru | Out-Null
         } else {
             Write-InstallLog -Message "  Erstelle neue Podman Machine (WSL2 runtime)..." -Level Info
             # Initialize with WSL2 provider using Start-Process for proper argument handling
-            $initResult = Start-Process -FilePath $podmanExe `n                -ArgumentList @("machine", "init", "--provider", "wsl") `n                -Wait -NoNewWindow -PassThru
+            $initResult = Start-Process -FilePath $podmanExe `
+                -ArgumentList @("machine", "init", "--provider", "wsl") `
+                -Wait -NoNewWindow -PassThru
             if ($initResult.ExitCode -eq 0) {
                 Write-InstallLog -Message "  Machine init erfolgreich." -Level Info
-                Start-Process -FilePath $podmanExe `n                    -ArgumentList @("machine", "start") `n                    -Wait -NoNewWindow -PassThru | Out-Null
+                Start-Process -FilePath $podmanExe `
+                    -ArgumentList @("machine", "start") `
+                    -Wait -NoNewWindow -PassThru | Out-Null
             } else {
                 Write-InstallLog -Message "  Machine init fehlgeschlagen (ExitCode: $($initResult.ExitCode))" -Level Warning
             }
