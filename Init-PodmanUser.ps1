@@ -19,7 +19,9 @@ $success = $false
 try {
     $AppDataConfig  = "$env:APPDATA\Podman Desktop"
     $SettingsFile   = "$AppDataConfig\settings.json"
-    $ConfigJsonPath = "C:\ProgramData\CorporateIT\Podman\podman-config.json"
+    # $PSScriptRoot zeigt auf das Verzeichnis, in das Install-Master.ps1 die Skripte kopiert hat
+    # (Paths.SecureStorage). So funktioniert der Pfad unabhängig vom konfigurierten SecureStorage-Wert.
+    $ConfigJsonPath = Join-Path -Path $PSScriptRoot -ChildPath "podman-config.json"
     $Config         = Get-Content -Path $ConfigJsonPath -Raw | ConvertFrom-Json
 
     # 1. UI und Zertifikat-Sync vorkonfigurieren
@@ -50,7 +52,7 @@ try {
         }
 
         # 3. Transparent Proxy: Root-CA-Zertifikat in Linux-Trust-Store injizieren
-        $CertPath = "C:\ProgramData\CorporateIT\Podman\CorporateRootCA.cer"
+        $CertPath = Join-Path -Path $PSScriptRoot -ChildPath "CorporateRootCA.cer"
         if (Test-Path -Path $CertPath) {
             $WslCertPath = ConvertTo-WslPath -WinPath $CertPath
             Start-Process -FilePath "wsl" `

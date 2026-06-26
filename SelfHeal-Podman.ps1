@@ -7,7 +7,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 try {
-    $ConfigJsonPath = "C:\ProgramData\CorporateIT\Podman\podman-config.json"
+    # $PSScriptRoot zeigt auf das Verzeichnis, in das Install-Master.ps1 die Skripte kopiert hat
+    # (Paths.SecureStorage). So funktioniert der Pfad unabhängig vom konfigurierten SecureStorage-Wert.
+    $ConfigJsonPath = Join-Path -Path $PSScriptRoot -ChildPath "podman-config.json"
     if (-not (Test-Path -Path $ConfigJsonPath)) { exit }
     $Config = Get-Content -Path $ConfigJsonPath -Raw | ConvertFrom-Json
 
