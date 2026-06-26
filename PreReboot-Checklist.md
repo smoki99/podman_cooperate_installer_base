@@ -50,11 +50,25 @@ if ($tasks.Count -ge 2) {
 
 # 4. SecureStorage Verzeichnis existiert?
 Write-Host "[4/10] Prüfe SecureStorage Verzeichnis..." -ForegroundColor Cyan
-$secureDir = "$env:ALLUSERSPROFILE\podman-storage"
-if (Test-Path $secureDir) {
-    Write-Host "  ✓ SecureStorage existiert: $secureDir" -ForegroundColor Green
-} else {
-    Write-Host "  ✗ SecureStorage NICHT gefunden" -ForegroundColor Red
+try {
+    # Lese den Pfad aus podman-config.json (gleicher Pfad wie Install-Master.ps1)
+    $configPath = "$PSScriptRoot\podman-config.json"
+    if (Test-Path $configPath) {
+        $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json
+        $secureDir = $config.Paths.SecureStorage
+    } else {
+        # Fallback: Standardpfad aus README.md
+        $secureDir = "C:\\ProgramData\\CorporateIT\\Podman"
+    }
+    
+    if (Test-Path $secureDir) {
+        Write-Host "  ✓ SecureStorage existiert: $secureDir" -ForegroundColor Green
+    } else {
+        Write-Host "  ✗ SecureStorage NICHT gefunden ($secureDir)" -ForegroundColor Red
+        $allPassed = $false
+    }
+} catch {
+    Write-Host "  ✗ Fehler beim Lesen von podman-config.json: $_" -ForegroundColor Red
     $allPassed = $false
 }
 
