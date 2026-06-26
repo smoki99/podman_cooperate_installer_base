@@ -1,0 +1,13 @@
+{
+    "CorporateSettings": {
+        "MaxMemory": "8GB",
+        "Processors": "4",
+        "MTU": 1350
+    },
+    "Registries": {
+        "AllowedSearchRegistry": "registry.eure-firma.com"
+    },
+    "Paths": {
+        "SecureStorage": "C:\\ProgramData\\CorporateIT\\Podman"
+    }
+}
