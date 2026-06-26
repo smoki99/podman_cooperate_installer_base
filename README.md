@@ -22,7 +22,8 @@ Your deployment package must contain the following files in a single folder:
 ```text
 📁 Podman-Deployment/
  ┣ 📜 README.md                     (This file)
- ┣ 📜 podman-desktop-setup.exe      (The official offline installer)
+ ┣ 📜 podman-desktop-setup.exe      (The official offline installer for WSL2)
+ ┣ 📜 podman-installer-windows-amd64.msi  (Podman CLI MSI installer - see Preparation section below)
  ┣ 📜 CorporateRootCA.cer           (OPTIONAL: Your company's Base64 Root CA)
  ┣ 📜 podman-config.json            (Central configuration file)
  ┣ 📜 Install-Master.ps1            (Phase 1: SYSTEM context installer)
@@ -38,11 +39,16 @@ Your deployment package must contain the following files in a single folder:
 
 Before deploying this package via Microsoft Intune, SCCM, or testing it locally, you must prepare the payload:
 
-1. **Download the Podman Installer:**
+1. **Download the Podman Desktop Installer:**
    Download the latest `.exe` installer from the [Podman Desktop Website](https://podman-desktop.io/) and place it in this directory. Ensure it is named exactly `podman-desktop-setup.exe`.
-2. **Export your Corporate Root CA (Optional but recommended):**
+2. **Download the Podman CLI MSI Installer (Required):**
+   The Podman CLI is NOT included with Podman Desktop installation. You must download it separately:
+   * Go to [Podman GitHub Releases](https://github.com/containers/podman/releases)
+   * Download `podman-installer-windows-amd64.msi` from the latest release (note: only Windows AMD64 MSI installers are available for WSL2)
+   * Place `podman-installer-windows-amd64.msi` in this directory (same folder as `podman-desktop-setup.exe`)
+3. **Export your Corporate Root CA (Optional but recommended):**
    If your company uses a Transparent Proxy that performs SSL Inspection, export your Root CA certificate as a Base64 encoded `.cer` file. Name it `CorporateRootCA.cer` and place it in this folder.
-3. **Configure `podman-config.json`:**
+4. **Configure `podman-config.json`:**
    Open the JSON file and adjust it to your corporate standards.
    ```json
    {

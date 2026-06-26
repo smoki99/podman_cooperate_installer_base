@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Haupt-Installer (Robust). Aktiviert WSL, installiert Podman, richtet Tasks ein.
+    Haupt-Installer (Robust). Aktiviert WSL, installiert Podman Desktop & CLI, richtet Machine ein.
     SAFE CODE: Validiert Installer-Pfad und Rechte. Idempotent - kann mehrfach ausgeführt werden.
 #>
 Set-StrictMode -Version Latest
@@ -36,6 +36,7 @@ function Test-Administrator {
 
 $InstallDir  = $PSScriptRoot
 $ExePath     = Join-Path -Path $InstallDir -ChildPath "podman-desktop-setup.exe"
+$MsiPath     = Join-Path -Path $InstallDir -ChildPath "podman-installer-windows-amd64.msi"
 $ConfigPath  = Join-Path -Path $InstallDir -ChildPath "podman-config.json"
 
 # Create log file in temp directory for admin review
@@ -46,6 +47,7 @@ $LogFilePath = "$env:TEMP\podman-install.log"
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Starte Install-Master.ps1..." -Level Info
 Write-InstallLog -Message "Installer Pfad: $ExePath" -Level Info
+Write-InstallLog -Message "MSI Pfad: $MsiPath" -Level Info
 Write-InstallLog -Message "Konfigurationsdatei: $ConfigPath" -Level Info
 
 if (-not (Test-Administrator)) {
@@ -56,6 +58,12 @@ if (-not (Test-Administrator)) {
 if (-not (Test-Path -Path $ExePath)) {
     Write-InstallLog -Message "Fehler: Installer $ExePath nicht gefunden!" -Level Error
     exit 2
+}
+
+if (-not (Test-Path -Path $CliPath)) {
+    Write-InstallLog -Message "Fehler: Podman CLI ($CliPath) nicht gefunden!" -Level Error
+    Write-InstallLog -Message "Bitte laden Sie podman.exe von https://github.com/containers/podman/releases und legen Sie es in das Installer-Verzeichnis." -Level Error
+    exit 21
 }
 
 if (-not (Test-Path -Path $ConfigPath)) {
@@ -193,37 +201,71 @@ try {
 }
 
 # -----------------------------------------------------------------------------
-# STEP 5.1: ADD PODMAN DESKTOP TO SYSTEM PATH (Machine-level)
+# STEP 5.1: PODMAN CLI INSTALLATION (from bundled podman.exe)
 # -----------------------------------------------------------------------------
-Write-InstallLog -Message "Add Podman Desktop to system PATH..." -Level Info
+Write-InstallLog -Message "Installiere Podman CLI..." -Level Info
 try {
-    $podmanPath = "C:\Program Files\Podman Desktop"
-    if (Test-Path $podmanPath) {
-        $currentPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
-        if ($currentPath -notlike "*$podmanPath*") {
-            $newPath = "$podmanPath;$currentPath"
-            [Environment]::SetEnvironmentVariable("PATH", $newPath, "Machine")
-            Write-InstallLog -Message "Podman Desktop added to system PATH" -Level Info
-        } else {
-            Write-InstallLog -Message "Podman Desktop already in system PATH" -Level Info
-        }
+    $podmanBinDir = "$env:USERPROFILE\.local\bin"
+    
+    # Create .local\bin directory if it doesn't exist
+    if (-not (Test-Path -Path $podmanBinDir)) {
+        New-Item -Path $podmanBinDir -ItemType Directory -Force | Out-Null
+        Write-InstallLog -Message "  Verzeichnis erstellt: $podmanBinDir" -Level Info
+    }
+    
+    # Copy podman.exe to user's .local\bin
+    Copy-Item -Path $CliPath -Destination "$podmanBinDir\podman.exe" -Force
+    Write-InstallLog -Message "  Podman CLI kopiert nach: $podmanBinDir\podman.exe" -Level Info
+    
+    # Add .local\bin to user PATH if not already present
+    $currentPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+    if ($currentPath -notlike "*$podmanBinDir*") {
+        $newPath = "$podmanBinDir;$currentPath"
+        [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
+        Write-InstallLog -Message "  .local\bin zum User PATH hinzugefügt" -Level Info
     } else {
-        Write-InstallLog -Message "Warning: Podman Desktop not found at $podmanPath" -Level Warning
+        Write-InstallLog -Message "  .local\bin bereits im User PATH" -Level Info
     }
 } catch {
-    Write-InstallLog -Message "Warnung: PATH konnte nicht aktualisiert werden: $_" -Level Warning
+    Write-InstallLog -Message "Fehler bei der Podman CLI Installation: $_" -Level Error
+    exit 20
 }
 
 # -----------------------------------------------------------------------------
-# STEP 5.2: WINDOWS FIREWALL RULES (prevent interactive prompts)
+# STEP 5.2: PODMAN MACHINE INITIALIZATION (silent)
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Initialisiere Podman Machine..." -Level Info
+try {
+    $podmanExe = "$env:USERPROFILE\.local\bin\podman.exe"
+    
+    # Check if machine already exists
+    $existingMachines = & $podmanExe machine list 2>$null | Select-String "Running|Stopped" -Context 0,1
+    
+    if ($existingMachines) {
+        Write-InstallLog -Message "  Podman Machine existiert bereits, starte sie..." -Level Info
+        & $podmanExe machine start --quiet 2>$null | Out-Null
+    } else {
+        Write-InstallLog -Message "  Erstelle neue Podman Machine (default)..." -Level Info
+        # Initialize with default settings (silent, no interactive prompts)
+        & $podmanExe machine init --quiet 2>$null | Out-Null
+        & $podmanExe machine start --quiet 2>$null | Out-Null
+    }
+    
+    Write-InstallLog -Message "  Podman Machine erfolgreich initialisiert." -Level Info
+} catch {
+    Write-InstallLog -Message "Warnung: Podman Machine Initialisierung fehlgeschlagen: $_" -Level Warning
+}
+
+# -----------------------------------------------------------------------------
+# STEP 5.3: WINDOWS FIREWALL RULES (prevent interactive prompts)
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Erstelle Windows Firewall Regeln..." -Level Info
 try {
     # Podman Desktop application rule
-    $podmanExe = "C:\Program Files\Podman Desktop\Podman Desktop.exe"
-    if (Test-Path $podmanExe) {
+    $podmanDesktopExe = "C:\Program Files\Podman Desktop\Podman Desktop.exe"
+    if (Test-Path $podmanDesktopExe) {
         New-NetFirewallRule -DisplayName "Podman Desktop Outbound" `
-            -Direction Outbound -Action Allow -Program $podmanExe `
+            -Direction Outbound -Action Allow -Program $podmanDesktopExe `
             -Description "Erlaubt Podman Desktop ausgehende Verbindungen" | Out-Null
         Write-InstallLog -Message "  Firewall-Regel 'Podman Desktop Outbound' erstellt." -Level Info
     }
