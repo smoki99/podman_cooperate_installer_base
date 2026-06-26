@@ -53,21 +53,8 @@ try {
     Write-PodmanLog -Message "=== Podman User Init Started ===" -Level Info
     Write-PodmanLog -Message "User: $($env:USERNAME)" -Level Info
     
-    # Add Podman Desktop to PATH for all users (system-wide)
-    $podmanPath = "C:\Program Files\Podman Desktop"
-    if (Test-Path $podmanPath) {
-        Write-PodmanLog -Message "Adding Podman to system PATH..." -Level Info
-        $currentPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
-        if ($currentPath -notlike "*$podmanPath*") {
-            $newPath = "$podmanPath;$currentPath"
-            [Environment]::SetEnvironmentVariable("PATH", $newPath, "Machine")
-            Write-PodmanLog -Message "Podman added to system PATH" -Level Info
-        } else {
-            Write-PodmanLog -Message "Podman already in system PATH" -Level Info
-        }
-    } else {
-        Write-PodmanLog -Message "Warning: Podman not found at $podmanPath" -Level Warning
-    }
+    # Note: PATH modification is handled by Install-Master.ps1 (admin context).
+    # This script runs as limited user and cannot modify Machine PATH.
     
     $AppDataConfig  = "$env:APPDATA\Podman Desktop"
     $SettingsFile   = "$AppDataConfig\settings.json"
@@ -134,7 +121,9 @@ enabled=false
 appendWindowsPath=false
 "@
         $TempWslConf    = "$env:TEMP\wsl.conf"
-        Set-Content -Path $TempWslConf -Value $WslConfContent -Force -Encoding utf8NoBOM
+        # Write UTF8 without BOM using .NET encoding class
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($TempWslConf, $WslConfContent, $utf8NoBom)
         $WslTempWslConf = ConvertTo-WslPath -WinPath $TempWslConf
         Start-Process -FilePath "wsl" `
             -ArgumentList "-d", "podman-machine-default", "-u", "root", "--", `
