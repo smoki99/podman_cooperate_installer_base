@@ -37,7 +37,6 @@ function Test-Administrator {
 $InstallDir  = $PSScriptRoot
 $ExePath     = Join-Path -Path $InstallDir -ChildPath "podman-desktop-setup.exe"
 $MsiPath     = Join-Path -Path $InstallDir -ChildPath "podman-installer-windows-amd64.msi"
-$CliPath     = Join-Path -Path $InstallDir -ChildPath "podman.exe"
 $ConfigPath  = Join-Path -Path $InstallDir -ChildPath "podman-config.json"
 
 # Create log file in temp directory for admin review
@@ -61,10 +60,9 @@ if (-not (Test-Path -Path $ExePath)) {
     exit 2
 }
 
-if (-not (Test-Path -Path $CliPath)) {
-    Write-InstallLog -Message "Fehler: Podman CLI ($CliPath) nicht gefunden!" -Level Error
-    Write-InstallLog -Message "Bitte laden Sie podman.exe von https://github.com/containers/podman/releases und legen Sie es in das Installer-Verzeichnis." -Level Error
-    exit 21
+if (-not (Test-Path -Path $MsiPath)) {
+    Write-InstallLog -Message "Fehler: Podman MSI ($MsiPath) nicht gefunden!" -Level Error
+    exit 40
 }
 
 if (-not (Test-Path -Path $ConfigPath)) {
@@ -202,34 +200,22 @@ try {
 }
 
 # -----------------------------------------------------------------------------
-# STEP 5.1: PODMAN CLI INSTALLATION (from bundled podman.exe)
+# STEP 5.1: PODMAN CLI INSTALLATION (via MSI)
 # -----------------------------------------------------------------------------
-Write-InstallLog -Message "Installiere Podman CLI..." -Level Info
+Write-InstallLog -Message "Installiere Podman CLI via MSI..." -Level Info
 try {
-    $podmanBinDir = "$env:USERPROFILE\.local\bin"
-    
-    # Create .local\bin directory if it doesn't exist
-    if (-not (Test-Path -Path $podmanBinDir)) {
-        New-Item -Path $podmanBinDir -ItemType Directory -Force | Out-Null
-        Write-InstallLog -Message "  Verzeichnis erstellt: $podmanBinDir" -Level Info
+    # Install podman-installer-windows-amd64.msi silently
+    $msiProc = Start-Process -FilePath "msiexec.exe" `
+        -ArgumentList "/i", "$MsiPath", "/qn", "/norestart" `
+        -Wait -NoNewWindow -PassThru
+    if ($msiProc.ExitCode -ne 0) {
+        Write-InstallLog -Message "Fehler bei der MSI Installation (ExitCode: $($msiProc.ExitCode))" -Level Error
+        exit 41
     }
-    
-    # Copy podman.exe to user's .local\bin
-    Copy-Item -Path $CliPath -Destination "$podmanBinDir\podman.exe" -Force
-    Write-InstallLog -Message "  Podman CLI kopiert nach: $podmanBinDir\podman.exe" -Level Info
-    
-    # Add .local\bin to user PATH if not already present
-    $currentPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-    if ($currentPath -notlike "*$podmanBinDir*") {
-        $newPath = "$podmanBinDir;$currentPath"
-        [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
-        Write-InstallLog -Message "  .local\bin zum User PATH hinzugefügt" -Level Info
-    } else {
-        Write-InstallLog -Message "  .local\bin bereits im User PATH" -Level Info
-    }
+    Write-InstallLog -Message "Podman CLI erfolgreich via MSI installiert." -Level Info
 } catch {
-    Write-InstallLog -Message "Fehler bei der Podman CLI Installation: $_" -Level Error
-    exit 20
+    Write-InstallLog -Message "Fehler beim Starten der MSI Installation: $_" -Level Error
+    exit 42
 }
 
 # -----------------------------------------------------------------------------
