@@ -14,7 +14,7 @@ $allPassed = $true
 Write-Host "[1/10] Prüfe WSL2 Features..." -ForegroundColor Cyan
 $wslFeature = Get-WindowsOptionalFeature -Online -FeatureName "Microsoft-Windows-Subsystem-Linux"
 $vmpFeature = Get-WindowsOptionalFeature -Online -FeatureName "VirtualMachinePlatform"
-if ($wslFeature.FeatureState -eq 'Enabled' -and $vmpFeature.FeatureState -eq 'Enabled') {
+if ($wslFeature.State -eq 'Enabled' -and $vmpFeature.State -eq 'Enabled') {
     Write-Host "  ✓ WSL2 und VirtualMachinePlatform aktiviert" -ForegroundColor Green
 } else {
     Write-Host "  ✗ WSL2 Features NICHT aktiviert (benötigt Neustart)" -ForegroundColor Yellow
