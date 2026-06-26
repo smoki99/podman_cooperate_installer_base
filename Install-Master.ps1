@@ -223,39 +223,58 @@ try {
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Verifiziere Podman Installation und PATH..." -Level Info
 try {
-    # Machine-scope installation path according to official docs:
-    # %PROGRAMFILES%\Podman (not \bin subdirectory)
-    $machineScopePath = "$env:ProgramFiles\Podman"
+    # Check multiple possible installation locations for podman.exe:
+    # 1. Machine-scope with bin subdirectory: %PROGRAMFILES%\Podman\bin\
+    # 2. Machine-scope direct: %PROGRAMFILES%\Podman\
+    # 3. User-scope: %LOCALAPPDATA%\Programs\Podman\
     
-    if (Test-Path -Path "$machineScopePath\podman.exe") {
-        Write-InstallLog -Message "  Podman gefunden unter: $machineScopePath" -Level Info
-        
-        # Check if already in SYSTEM PATH
-        $systemPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
-        
-        if ($systemPath -notlike "*$machineScopePath*") {
-            # Add to SYSTEM PATH (machine-wide, all users)
-            $newSystemPath = "$machineScopePath;$systemPath"
-            [Environment]::SetEnvironmentVariable("PATH", $newSystemPath, "Machine")
-            Write-InstallLog -Message "  Podman zum System PATH hinzugefügt: $machineScopePath" -Level Info
-        } else {
-            Write-InstallLog -Message "  Podman bereits im System PATH (vom Installer gesetzt)" -Level Info
+    $possiblePaths = @(
+        "$env:ProgramFiles\Podman\bin",
+        "$env:ProgramFiles\Podman",
+        "$env:LOCALAPPDATA\Programs\Podman"
+    )
+    
+    $foundPath = $null
+    foreach ($checkPath in $possiblePaths) {
+        if (Test-Path -Path "$checkPath\podman.exe") {
+            $foundPath = $checkPath
+            Write-InstallLog -Message "  Podman gefunden unter: $checkPath" -Level Info
+            break
         }
-    } else {
-        # Fallback: check user-scope path in case installer defaulted to it
-        $userScopePath = "$env:LOCALAPPDATA\Programs\Podman"
-        if (Test-Path -Path "$userScopePath\podman.exe") {
-            Write-InstallLog -Message "WARNUNG: Podman wurde im user-scope installiert ($userScopePath)" -Level Warning
-            Write-InstallLog -Message "  Füge zum User PATH hinzu..." -Level Info
+    }
+    
+    if ($foundPath) {
+        # Determine scope based on path location
+        if ($foundPath -like "$env:ProgramFiles*") {
+            Write-InstallLog -Message "  Machine-scope installation detected." -Level Info
             
-            $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-            if ($userPath -notlike "*$userScopePath*") {
-                $newUserPath = "$userScopePath;$userPath"
-                [Environment]::SetEnvironmentVariable("PATH", $newUserPath, "User")
-                Write-InstallLog -Message "  Podman zum User PATH hinzugefügt" -Level Info
+            # Check if already in SYSTEM PATH
+            $systemPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+            
+            if ($systemPath -notlike "*$foundPath*") {
+                # Add to SYSTEM PATH (machine-wide, all users)
+                $newSystemPath = "$foundPath;$systemPath"
+                [Environment]::SetEnvironmentVariable("PATH", $newSystemPath, "Machine")
+                Write-InstallLog -Message "  Podman zum System PATH hinzugefügt: $foundPath" -Level Info
+            } else {
+                Write-InstallLog -Message "  Podman bereits im System PATH." -Level Info
             }
         } else {
-            Write-InstallLog -Message "WARNUNG: podman.exe konnte nicht gefunden werden!" -Level Warning
+            Write-InstallLog -Message "WARNUNG: User-scope installation detected ($foundPath)" -Level Warning
+            
+            # Add to USER PATH instead
+            $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+            if ($userPath -notlike "*$foundPath*") {
+                $newUserPath = "$foundPath;$userPath"
+                [Environment]::SetEnvironmentVariable("PATH", $newUserPath, "User")
+                Write-InstallLog -Message "  Podman zum User PATH hinzugefügt." -Level Info
+            }
+        }
+    } else {
+        Write-InstallLog -Message "WARNUNG: podman.exe konnte nicht gefunden werden!" -Level Warning
+        Write-InstallLog -Message "  Geprüfte Pfade:" -Level Warning
+        foreach ($p in $possiblePaths) {
+            Write-InstallLog -Message "    - $p\podman.exe" -Level Warning
         }
     }
 } catch {
