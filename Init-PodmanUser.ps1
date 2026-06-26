@@ -51,7 +51,31 @@ try {
             throw "Fehler bei podman machine init (ExitCode: $($initProcess.ExitCode))"
         }
 
-        # 3. Transparent Proxy: Root-CA-Zertifikat in Linux-Trust-Store injizieren
+        # 3. WSL-interne Härtung: /etc/wsl.conf konfigurieren
+        # Setzt non-root Standard-User, sichere Automount-Optionen und sperrt Interop
+        # (WSL-Prozesse dürfen keine Windows-Executables starten).
+        $WslConfContent = @"
+[user]
+default=user
+
+[automount]
+enabled=true
+options=metadata,umask=022,fmask=011
+
+[interop]
+enabled=false
+appendWindowsPath=false
+"@
+        $TempWslConf    = "$env:TEMP\wsl.conf"
+        Set-Content -Path $TempWslConf -Value $WslConfContent -Force -Encoding utf8NoBOM
+        $WslTempWslConf = ConvertTo-WslPath -WinPath $TempWslConf
+        Start-Process -FilePath "wsl" `
+            -ArgumentList "-d", "podman-machine-default", "-u", "root", "--", `
+            "cp", $WslTempWslConf, "/etc/wsl.conf" `
+            -Wait -NoNewWindow
+        Remove-Item -Path $TempWslConf -Force -ErrorAction SilentlyContinue
+
+        # 4. Transparent Proxy: Root-CA-Zertifikat in Linux-Trust-Store injizieren
         $CertPath = Join-Path -Path $PSScriptRoot -ChildPath "CorporateRootCA.cer"
         if (Test-Path -Path $CertPath) {
             $WslCertPath = ConvertTo-WslPath -WinPath $CertPath
@@ -65,7 +89,7 @@ try {
                 -Wait -NoNewWindow
         }
 
-        # 4. Zero-Trust Registry: Nur Firmen-Registry erlauben
+        # 5. Zero-Trust Registry: Nur Firmen-Registry erlauben
         $PolicyJson = @"
 {
   "default": [{"type": "reject"}],
@@ -102,7 +126,7 @@ try {
 
         Remove-Item -Path $TempPolicy, $TempReg -Force -ErrorAction SilentlyContinue
 
-        # 5. Maschine starten und ExitCode prüfen
+        # 6. Maschine starten und ExitCode prüfen
         $startProcess = Start-Process -FilePath "podman" `
             -ArgumentList "machine", "start" `
             -Wait -NoNewWindow -PassThru

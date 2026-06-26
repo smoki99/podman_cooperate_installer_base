@@ -32,6 +32,24 @@ if (Test-Path -Path "$InstallDir\CorporateRootCA.cer") {
     Copy-Item -Path "$InstallDir\CorporateRootCA.cer" -Destination $SecureDir -Force
 }
 
+# Lokale Gruppe 'podman-users' anlegen (idempotent — Fehler bei bereits vorhandener Gruppe ignorieren).
+# Nur Mitglieder dieser Gruppe erhalten den Podman-User-Init-Task und Lesezugriff auf SecureStorage.
+Write-Host "    Erstelle lokale Gruppe 'podman-users'..." -ForegroundColor Cyan
+New-LocalGroup -Name "podman-users" `
+    -Description "Autorisierte Podman-Entwickler (IT-verwaltet)" `
+    -ErrorAction SilentlyContinue
+
+# NTFS-Berechtigungen auf SecureDir setzen:
+# Vererbung aufheben, dann explizit: SYSTEM=Full, Admins=Full, podman-users=ReadExecute.
+# Standard-Users und Everyone werden NICHT gewährt — nur podman-users-Mitglieder dürfen lesen.
+Write-Host "    Setze NTFS-ACLs auf '$SecureDir'..." -ForegroundColor Cyan
+& icacls $SecureDir /inheritance:r                          | Out-Null
+& icacls $SecureDir /grant "SYSTEM:(OI)(CI)F"              | Out-Null
+& icacls $SecureDir /grant "BUILTIN\Administrators:(OI)(CI)F" | Out-Null
+& icacls $SecureDir /grant "podman-users:(OI)(CI)RX"       | Out-Null
+& icacls $SecureDir /remove "BUILTIN\Users"                 | Out-Null
+& icacls $SecureDir /remove "Everyone"                      | Out-Null
+
 Write-Host "[2/4] Aktiviere WSL2 Features (VirtualMachinePlatform)..." -ForegroundColor Cyan
 Enable-WindowsOptionalFeature -Online -FeatureName "VirtualMachinePlatform"             -All -NoRestart -ErrorAction SilentlyContinue
 Enable-WindowsOptionalFeature -Online -FeatureName "Microsoft-Windows-Subsystem-Linux"  -All -NoRestart -ErrorAction SilentlyContinue
@@ -42,11 +60,13 @@ if ($installProc.ExitCode -ne 0) { throw "Fehler bei der Installation der .exe (
 
 Write-Host "[4/4] Registriere Scheduled Tasks (User-Init und Self-Healing)..." -ForegroundColor Cyan
 
-# Task 1: User Init (läuft als normaler User beim Login, einmalig bis zur Selbst-Deregistrierung)
+# Task 1: User Init (läuft als Mitglied von 'podman-users' beim Login, einmalig bis zur Selbst-Deregistrierung).
+# Die Einschränkung auf 'podman-users' (statt BUILTIN\Users) stellt sicher, dass nur autorisierte
+# Entwickler eine Podman-Maschine erhalten.
 $UserAction    = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$SecureDir\Init-PodmanUser.ps1`""
 $UserTrigger   = New-ScheduledTaskTrigger -AtLogon
-$UserPrincipal = New-ScheduledTaskPrincipal -GroupId "BUILTIN\Users" -RunLevel Limited
+$UserPrincipal = New-ScheduledTaskPrincipal -GroupId "podman-users" -RunLevel Limited
 Register-ScheduledTask -TaskName "Podman-User-Init" `
     -Action $UserAction -Trigger $UserTrigger -Principal $UserPrincipal -Force | Out-Null
 
