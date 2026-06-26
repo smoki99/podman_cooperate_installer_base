@@ -309,6 +309,29 @@ Start-Service sshd
 
 ---
 
+## 3a. Upgrade zu Windows 11 Pro (für gpedit.msc)
+
+**gpedit.msc ist nur in Windows 11 Pro/Enterprise verfügbar.** Wenn du Home installiert hast, kannst du upgraden:
+
+### Option A: Während der Installation (empfohlen)
+Beim Installer auf "Windows 11 Pro" statt "Home" wählen.
+
+### Option B: Upgrade nachträglich via changepk.exe (empfohlen)
+```powershell
+# Aktuelle Edition prüfen
+slmgr /dli
+
+# Upgrade zu Professional mit generischem Key
+changepk.exe /ProductKey xxxxxxxxx
+
+# Nach Aufforderung neu starten
+shutdown /r /t 0
+```
+
+**Hinweis:** Der oben genannte Key ist ein generischer Upgrade-Key. Für eine dauerhafte Aktivierung benötigst du einen gekauften Pro-Lizenzschlüssel.
+
+---
+
 ## 3b. Test-Benutzerkonten einrichten (Admin vs. Standard-User)
 
 Für das Testen des Deployment-Skripts benötigst du zwei Konten:
