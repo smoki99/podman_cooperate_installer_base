@@ -21,6 +21,8 @@ function Write-InstallLog {
         'Warning' { Write-Host "[$timestamp] WARN:  $Message" -ForegroundColor Yellow }
         'Error' { Write-Host "[$timestamp] ERROR: $Message" -ForegroundColor Red }
     }
+    # Also write to log file
+    Add-Content -Path $LogFilePath -Value "[$timestamp] [$Level] $Message"
 }
 
 function Test-Administrator {
@@ -36,10 +38,15 @@ $InstallDir  = $PSScriptRoot
 $ExePath     = Join-Path -Path $InstallDir -ChildPath "podman-desktop-setup.exe"
 $ConfigPath  = Join-Path -Path $InstallDir -ChildPath "podman-config.json"
 
+# Create log file in temp directory for admin review
+$LogFilePath = "$env:TEMP\podman-install.log"
+
 # -----------------------------------------------------------------------------
 # STEP 0: PRE-CHECKS
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Starte Install-Master.ps1..." -Level Info
+Write-InstallLog -Message "Installer Pfad: $ExePath" -Level Info
+Write-InstallLog -Message "Konfigurationsdatei: $ConfigPath" -Level Info
 
 if (-not (Test-Administrator)) {
     Write-InstallLog -Message "Fehler: Skript muss als Administrator ausgeführt werden!" -Level Error
@@ -59,6 +66,7 @@ if (-not (Test-Path -Path $ConfigPath)) {
 # SecureDir aus podman-config.json lesen
 $Config    = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
 $SecureDir = $Config.Paths.SecureStorage
+Write-InstallLog -Message "SecureStorage Pfad: $SecureDir" -Level Info
 
 # -----------------------------------------------------------------------------
 # STEP 1: CLEANUP - Entferne alte Scheduled Tasks (Idempotenz)
@@ -226,6 +234,7 @@ try {
     # Prüfen ob Gruppe existiert, falls nicht: Fallback zu BUILTIN\Users
     if (Get-LocalGroup -Name "podman-users" -ErrorAction SilentlyContinue) {
         $UserPrincipal = New-ScheduledTaskPrincipal -GroupId "podman-users" -RunLevel Limited
+        Write-InstallLog -Message "  Task Principal: podman-users group" -Level Info
     } else {
         Write-InstallLog -Message "Warnung: Gruppe 'podman-users' nicht gefunden, verwende BUILTIN\Users" -Level Warning
         $UserPrincipal = New-ScheduledTaskPrincipal -GroupId "BUILTIN\Users" -RunLevel Limited
@@ -285,6 +294,7 @@ if ($missingTasks.Count -gt 0) {
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "=== Installation abgeschlossen! ===" -Level Info
 Write-InstallLog -Message "WICHTIG: Bitte starte den Computer jetzt neu, damit WSL aktiviert wird." -Level Warning
+Write-InstallLog -Message "Logfile gespeichert unter: $LogFilePath" -Level Info
 
 # Exit-Code 3010 signalisiert Intune/SCCM, dass ein Neustart erforderlich ist.
 exit 3010
