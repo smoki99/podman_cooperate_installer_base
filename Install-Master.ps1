@@ -193,7 +193,29 @@ try {
 }
 
 # -----------------------------------------------------------------------------
-# STEP 5.1: WINDOWS FIREWALL RULES (prevent interactive prompts)
+# STEP 5.1: ADD PODMAN DESKTOP TO SYSTEM PATH (Machine-level)
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Add Podman Desktop to system PATH..." -Level Info
+try {
+    $podmanPath = "C:\Program Files\Podman Desktop"
+    if (Test-Path $podmanPath) {
+        $currentPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+        if ($currentPath -notlike "*$podmanPath*") {
+            $newPath = "$podmanPath;$currentPath"
+            [Environment]::SetEnvironmentVariable("PATH", $newPath, "Machine")
+            Write-InstallLog -Message "Podman Desktop added to system PATH" -Level Info
+        } else {
+            Write-InstallLog -Message "Podman Desktop already in system PATH" -Level Info
+        }
+    } else {
+        Write-InstallLog -Message "Warning: Podman Desktop not found at $podmanPath" -Level Warning
+    }
+} catch {
+    Write-InstallLog -Message "Warnung: PATH konnte nicht aktualisiert werden: $_" -Level Warning
+}
+
+# -----------------------------------------------------------------------------
+# STEP 5.2: WINDOWS FIREWALL RULES (prevent interactive prompts)
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Erstelle Windows Firewall Regeln..." -Level Info
 try {
