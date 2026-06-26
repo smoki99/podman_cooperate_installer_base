@@ -56,6 +56,23 @@ try {
     # Note: PATH modification is handled by Install-Master.ps1 (admin context).
     # This script runs as limited user and cannot modify Machine PATH.
     
+    # Find podman.exe using full path (don't rely on PATH resolution)
+    $podmanExe = $null
+    foreach ($searchPath in @(
+        "$env:ProgramFiles\Podman\podman.exe",
+        "$env:LOCALAPPDATA\Programs\Podman\podman.exe"
+    )) {
+        if (Test-Path -Path $searchPath) {
+            $podmanExe = $searchPath
+            Write-PodmanLog -Message "Found podman.exe at: $podmanExe" -Level Info
+            break
+        }
+    }
+    
+    if (-not $podmanExe) {
+        throw "Fehler: podman.exe konnte nicht gefunden werden! Bitte stelle sicher, dass Podman installiert ist."
+    }
+    
     $AppDataConfig  = "$env:APPDATA\Podman Desktop"
     $SettingsFile   = "$AppDataConfig\settings.json"
     # $PSScriptRoot zeigt auf das Verzeichnis, in das Install-Master.ps1 die Skripte kopiert hat
@@ -89,12 +106,12 @@ try {
     # 2. Maschine initialisieren, falls noch nicht vorhanden.
     # @() erzwingt Array-Kontext, damit .Count bei einem einzelnen Objekt korrekt funktioniert.
     Write-PodmanLog -Message "Checking existing Podman machines..." -Level Info
-    $machineStatus = @(podman machine ls --format json 2>&1 | ConvertFrom-Json)
+    $machineStatus = @(& $podmanExe machine ls --format json 2>&1 | ConvertFrom-Json)
     
     if ($machineStatus.Count -eq 0) {
         Write-PodmanLog -Message "No machines found. Initializing new Podman Machine..." -Level Info
         
-        $initProcess = Start-Process -FilePath "podman" `
+        $initProcess = Start-Process -FilePath $podmanExe `
             -ArgumentList "machine", "init", "--rootful=false" `
             -Wait -NoNewWindow -PassThru -RedirectStandardOutput "$env:TEMP\podman-init-output.txt"
         
@@ -191,7 +208,7 @@ appendWindowsPath=false
 
         # 6. Maschine starten und ExitCode prüfen
         Write-PodmanLog -Message "Starting Podman machine..." -Level Info
-        $startProcess = Start-Process -FilePath "podman" `
+        $startProcess = Start-Process -FilePath $podmanExe `
             -ArgumentList "machine", "start" `
             -Wait -NoNewWindow -PassThru -RedirectStandardOutput "$env:TEMP\podman-start-output.txt"
         if ($startProcess.ExitCode -ne 0) {
