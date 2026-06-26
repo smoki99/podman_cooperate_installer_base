@@ -278,12 +278,12 @@ try {
     
     if ($existingMachines) {
         Write-InstallLog -Message "  Podman Machine existiert bereits, starte sie..." -Level Info
-        & $podmanExe machine start --quiet 2>$null | Out-Null
+        & $podmanExe machine start 2>$null | Out-Null
     } else {
         Write-InstallLog -Message "  Erstelle neue Podman Machine (default)..." -Level Info
         # Initialize with default settings (silent, no interactive prompts)
-        & $podmanExe machine init --quiet 2>$null | Out-Null
-        & $podmanExe machine start --quiet 2>$null | Out-Null
+        & $podmanExe machine init 2>$null | Out-Null
+        & $podmanExe machine start 2>$null | Out-Null
     }
     
     Write-InstallLog -Message "  Podman Machine erfolgreich initialisiert." -Level Info
