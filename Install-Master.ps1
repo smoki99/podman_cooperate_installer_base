@@ -199,15 +199,23 @@ try {
         -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$SecureDir\SelfHeal-Podman.ps1`""
     $HealTriggerBoot = New-ScheduledTaskTrigger -AtStartup
     
-    # Event-Trigger für Cisco AnyConnect VPN (KORREKT: -LogName und -Id)
-    $HealTriggerVPN  = New-ScheduledTaskTrigger -OnEvent `
-        -LogName "Application" `
-        -Source "acvpnagent" `
-        -Id 2039
+    # Event-Trigger für Cisco AnyConnect VPN (nur wenn AnyConnect installiert ist)
+    $HealTriggers = @($HealTriggerBoot)
+    if (Get-EventLog -LogName Application -Source "acvpnagent" -ErrorAction SilentlyContinue) {
+        try {
+            $HealTriggerVPN = New-ScheduledTaskTrigger -OnEvent `
+                -LogName "Application" `
+                -Source "acvpnagent" `
+                -Id 2039
+            $HealTriggers += $HealTriggerVPN
+        } catch {
+            Write-InstallLog -Message "Warnung: Event-Trigger für AnyConnect konnte nicht erstellt werden: $_" -Level Warning
+        }
+    }
     
     Register-ScheduledTask -TaskName "Podman-SelfHeal" `
         -Action $HealAction `
-        -Trigger @($HealTriggerBoot, $HealTriggerVPN) `
+        -Trigger $HealTriggers `
         -User "SYSTEM" -RunLevel Highest -Force | Out-Null
     $tasksRegistered += "Podman-SelfHeal"
     Write-InstallLog -Message "  Task 'Podman-SelfHeal' registriert." -Level Info
