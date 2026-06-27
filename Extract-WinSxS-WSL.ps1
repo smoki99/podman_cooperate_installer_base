@@ -132,9 +132,9 @@ Write-Host "Copying extracted files..." -ForegroundColor Yellow
 
 if (Test-Path -Path $tempExtractDir) {
     # Find all en-us folders and copy them
-    $enUsFolders = Get-ChildItem -Path $tempExtractDir -Recurse -Directory -Filter "en-us"
+    $enUsFolders = Get-ChildItem -Path $tempExtractDir -Recurse -Directory -Filter "en-us" -ErrorAction SilentlyContinue
     
-    if ($enUsFolders.Count -gt 0) {
+    if ($null -ne $enUsFolders -and @($enUsFolders).Count -gt 0) {
         foreach ($folder in $enUsFolders) {
             Write-Host "Copying from: $($folder.FullName)" -ForegroundColor Cyan
             Copy-Item -Path "$($folder.FullName)\*" -Destination $sourceDir -Recurse -Force
