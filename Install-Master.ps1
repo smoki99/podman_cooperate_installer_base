@@ -293,7 +293,35 @@ Write-InstallLog -Message "  Machine will be initialized by Init-PodmanUser.ps1 
 Write-InstallLog -Message "  This ensures WSL2 provider is used (not Hyper-V)." -Level Info
 
 # -----------------------------------------------------------------------------
-# STEP 5.3: WINDOWS FIREWALL RULES (prevent interactive prompts)
+# STEP 5.3: CREATE .WSLCONFIG TEMPLATE FOR SELFHEAL
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Creating .wslconfig template for SelfHeal..." -Level Info
+try {
+    # Create the .wslconfig content from podman-config.json settings
+    $WslConfigContent = @"
+[wsl2]
+memory=$($Config.CorporateSettings.MaxMemory)
+processors=$($Config.CorporateSettings.Processors)
+networkingMode=mirrored
+dnsTunneling=true
+firewall=true
+autoMemoryReclaim=dropcache
+"@
+    
+    # Write to template file in SecureDir (UTF-8 without BOM)
+    $WslConfigTemplate = Join-Path -Path $SecureDir -ChildPath ".wslconfig"
+    [System.IO.File]::WriteAllText(
+        $WslConfigTemplate,
+        $WslConfigContent,
+        [System.Text.UTF8Encoding]::new($false)   # $false = kein BOM
+    )
+    Write-InstallLog -Message ".wslconfig template created at: $WslConfigTemplate" -Level Info
+} catch {
+    Write-InstallLog -Message "Fehler beim Erstellen von .wslconfig Template: $_" -Level Error
+}
+
+# -----------------------------------------------------------------------------
+# STEP 5.4: WINDOWS FIREWALL RULES (prevent interactive prompts)
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Erstelle Windows Firewall Regeln..." -Level Info
 try {

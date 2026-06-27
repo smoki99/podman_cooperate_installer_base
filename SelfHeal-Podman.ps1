@@ -55,20 +55,20 @@ try {
         Write-PodmanLog -Message "Created EventLog source: PodmanHeal" -Level Info
     }
 
-    # 1. Die harte .wslconfig durchsetzen
-    # [System.IO.File]::WriteAllText wird verwendet, um UTF-8 OHNE BOM zu schreiben.
-    # Set-Content -Encoding UTF8 erzeugt in PowerShell 5.1 eine BOM, die WSL stört.
+    # 1. Die harte .wslconfig durchsetzen (aus Template kopieren)
+    # Das Template wird von Install-Master.ps1 in SecureDir bereitgestellt.
     Write-PodmanLog -Message "Applying .wslconfig settings..." -Level Info
-    $WslConfigContent = @"
-[wsl2]
-memory=$($Config.CorporateSettings.MaxMemory)
-processors=$($Config.CorporateSettings.Processors)
-networkingMode=mirrored
-dnsTunneling=true
-firewall=true
-autoMemoryReclaim=dropcache
-"@
     
+    $WslConfigTemplate = Join-Path -Path $PSScriptRoot -ChildPath ".wslconfig"
+    if (-not (Test-Path -Path $WslConfigTemplate)) {
+        Write-PodmanLog -Message "ERROR: .wslconfig template not found at: $WslConfigTemplate" -Level Error
+        exit
+    }
+    
+    # Read the template content
+    $WslConfigContent = Get-Content -Path $WslConfigTemplate -Raw
+    
+    # Copy to each user profile (excluding system accounts)
     $UserProfiles = Get-ChildItem -Path "C:\Users" -Directory |
         Where-Object { $_.Name -notmatch "^(Public|Default.*|Administrator)$" }
     
