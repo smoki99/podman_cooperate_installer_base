@@ -7,13 +7,40 @@ It is specifically engineered for highly regulated corporate environments that u
 ## ✨ Key Features
 
 *   **Zero-Touch User Experience:** Developers do not see setup wizards, telemetry prompts, or EULAs. Everything is pre-configured silently.
-*   **Silent WSL Installation/Update:** Automatically installs or updates WSL without Microsoft Store popups using winget (prevents interactive prompts).
+*   **Fully Offline / Air-Gapped Deployment:** No internet connection required. Uses offline MSI installers for WSL and local CoreOS images for Podman Machine.
 *   **Zero-Trust Registry Enforcement:** Modifies the internal Linux `policy.json` to block all external registries (like Docker Hub or GHCR) and forces image pulls *only* from your approved corporate registry.
 *   **Transparent Proxy & SSL Inspection Bypass:** Automatically injects your Corporate Root CA into the WSL machine so `podman pull` doesn't fail with `x509: unknown authority` errors.
 *   **Cisco VPN Compatibility:** Enforces WSL2 **Mirrored Networking** and **DNS Tunneling** to prevent IP/Subnet collisions with corporate VPNs.
 *   **Self-Healing Architecture:** A SYSTEM-level scheduled task runs at every boot to enforce `.wslconfig` limits (saving RAM) and clear stuck `wslhost.exe` processes.
 *   **Socket Emulation:** Automatically sets the `DOCKER_HOST` environment variable so developer IDEs (VS Code, IntelliJ) and tools like Testcontainers work out-of-the-box.
 *   **WSL Hardening:** Configures `/etc/wsl.conf` with secure defaults: non-root default user, safe automount options, and disabled interop to prevent WSL processes from executing Windows binaries.
+
+---
+
+## ⚠️ STRIKT OFFLINE / AIR-GAPPED DEPLOYMENT
+
+**Dieser Installer ist ausschließlich für offline Deployments ausgelegt.**
+Es werden KEINE Online-Fallbacks verwendet!
+
+### Vorbereitung der Offline-Pakete (Admin-Aufgabe)
+
+#### 1. WSL MSI Installer (MANDATORY)
+- Download von: https://github.com/microsoft/WSL/releases
+- Speichern als `wsl-offline-installer.msi` im Deployment-Ordner
+- Beispiel: `wsl.2.4.10.x64.msi`
+
+#### 2. Podman CoreOS Image (MANDATORY)
+- Download des aktuellen Images von: https://github.com/containers/podman/releases
+- Speichern als `coreos-image.tar.xz` im Deployment-Ordner
+- Kopieren nach: `C:\ProgramData\CorporateIT\Podman\coreos-image.tar.xz`
+- Beispiel: `fedora-coreos-49.20250318.3.0.tar.xz`
+
+### Fehlerbehandlung bei fehlenden Paketen
+
+| Fehlendes Paket | Exit Code | Lösung |
+|-----------------|-----------|--------|
+| wsl-offline-installer.msi | 40 | MSI in Deployment-Ordner kopieren |
+| coreos-image.tar.xz | - | Image nach C:\ProgramData\CorporateIT\Podman\ kopieren |
 
 ---
 
@@ -26,6 +53,8 @@ Your deployment package must contain the following files in a single folder:
  ┣ 📜 README.md                     (This file)
  ┣ 📜 podman-desktop-setup.exe      (The official offline installer for WSL2)
  ┣ 📜 podman-installer-windows-amd64.msi  (Podman CLI MSI installer - see Preparation section below)
+ ┣ 📜 wsl-offline-installer.msi     (MANDATORY: Offline WSL installer from GitHub releases)
+ ┣ 📜 coreos-image.tar.xz           (MANDATORY: Podman CoreOS image for offline deployment)
  ┣ 📜 CorporateRootCA.cer           (OPTIONAL: Your company's Base64 Root CA)
  ┣ 📜 podman-config.json            (Central configuration file)
  ┣ 📜 Install-Master.ps1            (Phase 1: SYSTEM context installer)

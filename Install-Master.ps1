@@ -167,21 +167,30 @@ try {
 # STEP 4.1: SILENT WSL INSTALL/UPDATE (prevents Microsoft Store popup)
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Prüfe und installiere WSL (silent)..." -Level Info
-try {
-    # Check if wsl.exe exists and get its version
-    $wslExe = "$env:SystemRoot\System32\wsl.exe"
-    if (Test-Path $wslExe) {
-        Write-InstallLog -Message "  WSL bereits installiert, prüfe auf Updates..." -Level Info
-        # Run wsl --update silently to prevent popup prompts
-        Start-Process -FilePath $wslExe -ArgumentList "--update", "--quiet" -Wait -NoNewWindow -RedirectStandardOutput "$env:TEMP\wsl-update.log" -RedirectStandardError "$env:TEMP\wsl-update-error.log" -ErrorAction SilentlyContinue | Out-Null
-    } else {
-        Write-InstallLog -Message "  WSL nicht installiert, installiere jetzt..." -Level Info
-        # Download and install WSL silently from Microsoft Store (winget)
-        Start-Process -FilePath "winget.exe" -ArgumentList "install", "Microsoft.Windows.Subsystem.Linux", "--silent", "--accept-package-agreements", "--accept-source-agreements" -Wait -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget-wsl.log" -RedirectStandardError "$env:TEMP\winget-wsl-error.log" -ErrorAction SilentlyContinue | Out-Null
-    }
-} catch {
-    Write-InstallLog -Message "Warnung: WSL Update/Installation konnte nicht durchgeführt werden: $_" -Level Warning
+# -----------------------------------------------------------------------------
+# STEP 4.5: WSL OFFLINE INSTALLATION (MANDATORY)
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Prüfe WSL Offline-Installer..." -Level Info
+$WslMsiPath = Join-Path -Path $InstallDir -ChildPath "wsl-offline-installer.msi"
+
+if (-not (Test-Path -Path $WslMsiPath)) {
+    Write-InstallLog -Message "Fehler: WSL Offline-Installer fehlt!" -Level Error
+    Write-Host "[ERROR] wsl-offline-installer.msi nicht gefunden in: $WslMsiPath" -ForegroundColor Red
+    Write-Host "Bitte legen Sie 'wsl-offline-installer.msi' in den Deployment-Ordner." -ForegroundColor Yellow
+    Write-Host "Download von: https://github.com/microsoft/WSL/releases" -ForegroundColor Yellow
+    exit 40
 }
+
+Write-InstallLog -Message "Installiere WSL offline via MSI..." -Level Info
+$wslProc = Start-Process "msiexec.exe" `
+    -ArgumentList "/i `"$WslMsiPath`" /qn /norestart /L*V `"$env:TEMP\wsl-install.log`"" `
+    -Wait -PassThru
+
+if ($wslProc.ExitCode -ne 0 -and $wslProc.ExitCode -ne 3010) {
+    Write-InstallLog -Message "WSL Offline-Installation fehlgeschlagen. Exit Code: $($wslProc.ExitCode)" -Level Error
+    throw "WSL Offline-Installation fehlgeschlagen. Log unter $env:TEMP\wsl-install.log prüfen."
+}
+Write-InstallLog -Message "WSL offline erfolgreich installiert." -Level Info
 
 # -----------------------------------------------------------------------------
 # STEP 5: PODMAN DESKTOP INSTALLATION

@@ -111,15 +111,28 @@ try {
     if ($machineStatus.Count -eq 0) {
         Write-PodmanLog -Message "No machines found. Initializing new Podman Machine..." -Level Info
         
+        # -----------------------------------------------------------------------------
+        # MANDATORY: Local CoreOS Image Check (Offline Deployment)
+        # -----------------------------------------------------------------------------
+        $LocalImagePath = "C:\ProgramData\CorporateIT\Podman\coreos-image.tar.xz"
+        
+        if (-not (Test-Path -Path $LocalImagePath)) {
+            throw "Fehler: Lokales CoreOS Image nicht gefunden!\nBitte legen Sie das Image nach: C:\ProgramData\CorporateIT\Podman\coreos-image.tar.xz\nDownload von: https://github.com/containers/podman/releases"
+        }
+        
+        Write-PodmanLog -Message "Verwende lokalen CoreOS Image: $LocalImagePath" -Level Info
+        
+        # Init mit lokalem Image (kein Online-Download!)
+        $initArgs = @("machine", "init", "--rootful=false", "--image-path", $LocalImagePath)
         $initProcess = Start-Process -FilePath $podmanExe `
-            -ArgumentList "machine", "init", "--rootful=false" `
+            -ArgumentList $initArgs `
             -Wait -NoNewWindow -PassThru -RedirectStandardOutput "$env:TEMP\podman-init-output.txt"
         
         if ($initProcess.ExitCode -ne 0) {
             $output = Get-Content -Path "$env:TEMP\podman-init-output.txt" -Raw
             throw "Fehler bei podman machine init (ExitCode: $($initProcess.ExitCode)). Output: $output"
         }
-        Write-PodmanLog -Message "Podman machine initialized successfully." -Level Info
+        Write-PodmanLog -Message "Podman machine initialized successfully with local image." -Level Info
 
         # 3. WSL-interne Härtung: /etc/wsl.conf konfigurieren
         # Setzt non-root Standard-User, sichere Automount-Optionen und sperrt Interop
