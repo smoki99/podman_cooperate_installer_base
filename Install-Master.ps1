@@ -251,7 +251,9 @@ try {
             # Check if already in SYSTEM PATH
             $systemPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
             
-            if ($systemPath -notlike "*$foundPath*") {
+            # Check if path already exists with proper boundary checking (semicolon-separated)
+            $pathRegex = "^(?:.*;)?$([regex]::Escape($foundPath))(?:;.*)?$"
+            if ($systemPath -notmatch $pathRegex) {
                 # Add to SYSTEM PATH (machine-wide, all users)
                 $newSystemPath = "$foundPath;$systemPath"
                 [Environment]::SetEnvironmentVariable("PATH", $newSystemPath, "Machine")
@@ -264,7 +266,9 @@ try {
             
             # Add to USER PATH instead
             $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-            if ($userPath -notlike "*$foundPath*") {
+            # Check with proper boundary checking (semicolon-separated)
+            $pathRegex = "^(?:.*;)?$([regex]::Escape($foundPath))(?:;.*)?$"
+            if ($userPath -notmatch $pathRegex) {
                 $newUserPath = "$foundPath;$userPath"
                 [Environment]::SetEnvironmentVariable("PATH", $newUserPath, "User")
                 Write-InstallLog -Message "  Podman zum User PATH hinzugefügt." -Level Info
