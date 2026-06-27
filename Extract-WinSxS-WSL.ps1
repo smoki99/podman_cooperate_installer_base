@@ -106,26 +106,88 @@ foreach ($feature in $featuresToProcess) {
         Write-Warning "  Failed to install $($feature.Name): $_"
     }
     
-    # Step 2: Copy from WinSxS
-    Write-Host "  [Step 2] Copying from WinSxS..." -ForegroundColor Cyan
+    # Step 2: Query DISM for the actual package entries
+    Write-Host "  [Step 2] Querying DISM for package entries..." -ForegroundColor Cyan
+    $packageEntries = @()
+    try {
+        # Get all packages related to this feature
+        $queryResult = Start-Process "dism.exe" `
+            -ArgumentList @(
+                "/online",
+                "/get-packages"
+            ) `
+            -Wait `
+            -PassThru `
+            -RedirectStandardOutput $(Join-Path $env:TEMP "packages_$($feature.Name).txt")
+        
+        if ($queryResult.ExitCode -eq 0) {
+            # Parse the output to find packages related to this feature
+            $packageFile = Join-Path $env:TEMP "packages_$($feature.Name).txt"
+            if (Test-Path $packageFile) {
+                $content = Get-Content $packageFile -Raw
+                
+                # Look for package names that contain the feature name or related keywords
+                $keywords = @(
+                    "Microsoft-Windows-Subsystem-Linux",
+                    "VirtualMachinePlatform",
+                    "wsl",
+                    "vmp"
+                )
+                
+                foreach ($keyword in $keywords) {
+                    if ($content -match [regex]::Escape($keyword)) {
+                        # Extract package names from the DISM output
+                        # Package names are typically on lines starting with "Package Name:"
+                        $lines = Get-Content $packageFile
+                        foreach ($line in $lines) {
+                            if ($line -match "Package Name:\s+(.+)") {
+                                $packageName = $matches[1].Trim()
+                                # Check if this package is related to our feature
+                                if ($packageName -match [regex]::Escape($keyword)) {
+                                    Write-Host "    Found package: $packageName" -ForegroundColor Cyan
+                                    $packageEntries += $packageName
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } catch {
+        Write-Warning "  Failed to query packages: $_"
+    }
+    
+    # Step 3: Copy from WinSxS using actual package names
+    Write-Host "  [Step 3] Copying from WinSxS..." -ForegroundColor Cyan
     $winsxsPath = "C:\Windows\WinSxS"
     if (Test-Path -Path $winsxsPath) {
-        # Find folders matching the feature name in WinSxS
-        $featureFolders = Get-ChildItem -Path $winsxsPath -Directory | Where-Object { $_.Name -match [regex]::Escape($feature.Name) }
+        # Get all directories in WinSxS
+        $allDirs = Get-ChildItem -Path $winsxsPath -Directory
         
-        if ($featureFolders.Count -gt 0) {
-            Write-Host "  Found $($featureFolders.Count) folders for $($feature.Name)" -ForegroundColor Cyan
+        foreach ($dir in $allDirs) {
+            # Check if this directory name matches any of our package entries
+            foreach ($pkgEntry in $packageEntries) {
+                if ($dir.Name -match [regex]::Escape($pkgEntry)) {
+                    Write-Host "    Copying: $($dir.Name)..." -ForegroundColor Yellow
+                    Copy-Item -Path "$($dir.FullName)\*" -Destination $tempExtractDir -Recurse -Force
+                    break
+                }
+            }
+        }
+        
+        if ($packageEntries.Count -eq 0) {
+            Write-Warning "  No package entries found for $($feature.Name), trying feature name match"
+            # Fallback: try matching with feature name
+            $featureFolders = Get-ChildItem -Path $winsxsPath -Directory | Where-Object { $_.Name -match [regex]::Escape($feature.Name) }
             foreach ($folder in $featureFolders) {
-                Write-Host "    Copying: $($folder.Name)..." -ForegroundColor Yellow
+                Write-Host "    Copying (fallback): $($folder.Name)..." -ForegroundColor Yellow
                 Copy-Item -Path "$($folder.FullName)\*" -Destination $tempExtractDir -Recurse -Force
             }
-        } else {
-            Write-Warning "  No folders found for $($feature.Name) in WinSxS"
         }
     }
     
-    # Step 3: Uninstall the feature (if it wasn't already installed)
-    Write-Host "  [Step 3] Uninstalling $($feature.Name)..." -ForegroundColor Cyan
+    # Step 4: Uninstall the feature (if it wasn't already installed)
+    Write-Host "  [Step 4] Uninstalling $($feature.Name)..." -ForegroundColor Cyan
     try {
         $uninstallResult = Start-Process "dism.exe" `
             -ArgumentList @(
