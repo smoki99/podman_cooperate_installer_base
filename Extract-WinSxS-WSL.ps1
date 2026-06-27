@@ -68,79 +68,82 @@ if (Test-Path -Path $tempExtractDir) {
 New-Item -ItemType Directory -Force -Path $tempExtractDir | Out-Null
 Write-Host "[OK] Created temp directory: $tempExtractDir" -ForegroundColor Green
 
-# Method 1: Try to export using DISM with feature name (not manifest)
+# Method: Install features, copy from WinSxS, then uninstall
 Write-Host ""
 Write-Host "Exporting WSL packages from Windows..." -ForegroundColor Yellow
-Write-Host "This may take a few minutes and require internet access for missing files." -ForegroundColor Cyan
+Write-Host "This method will install the features temporarily, copy them, then uninstall." -ForegroundColor Cyan
 Write-Host ""
 
-$exportSuccess = $false
+$featuresToProcess = @(
+    @{Name="VirtualMachinePlatform"; DisplayName="Virtual Machine Platform"},
+    @{Name="Microsoft-Windows-Subsystem-Linux"; DisplayName="Windows Subsystem for Linux"}
+)
 
-# Try exporting VirtualMachinePlatform first (simpler approach)
-try {
-    Write-Host "Attempting to export VirtualMachinePlatform..." -ForegroundColor Cyan
-    $dismResult = Start-Process "dism.exe" `
-        -ArgumentList @(
-            "/online",
-            "/export-package",
-            "/name:VirtualMachinePlatform",
-            "/destination:`"$tempExtractDir`"
-        ) `
-        -Wait `
-        -PassThru
-    
-    if ($dismResult.ExitCode -eq 0) {
-        Write-Host "[OK] VirtualMachinePlatform exported successfully" -ForegroundColor Green
-        $exportSuccess = $true
-    } else {
-        Write-Warning "DISM returned exit code $($dismResult.ExitCode) for VirtualMachinePlatform"
-    }
-} catch {
-    Write-Warning "VirtualMachinePlatform export failed: $_"
-}
-
-# Try exporting Microsoft-Windows-Subsystem-Linux
-try {
-    Write-Host "Attempting to export Microsoft-Windows-Subsystem-Linux..." -ForegroundColor Cyan
-    $dismResult = Start-Process "dism.exe" `
-        -ArgumentList @(
-            "/online",
-            "/export-package",
-            "/name:Microsoft-Windows-Subsystem-Linux",
-            "/destination:`"$tempExtractDir`"
-        ) `
-        -Wait `
-        -PassThru
-    
-    if ($dismResult.ExitCode -eq 0) {
-        Write-Host "[OK] Microsoft-Windows-Subsystem-Linux exported successfully" -ForegroundColor Green
-        $exportSuccess = $true
-    } else {
-        Write-Warning "DISM returned exit code $($dismResult.ExitCode) for WSL"
-    }
-} catch {
-    Write-Warning "WSL export failed: $_"
-}
-
-# If DISM methods fail, try direct copy from WinSxS
-if (-not $exportSuccess) {
+foreach ($feature in $featuresToProcess) {
     Write-Host ""
-    Write-Host "DISM export failed. Attempting direct copy from WinSxS..." -ForegroundColor Yellow
+    Write-Host "Processing: $($feature.DisplayName)" -ForegroundColor Yellow
     
+    # Step 1: Install the feature (if not already installed)
+    Write-Host "  [Step 1] Installing $($feature.Name)..." -ForegroundColor Cyan
+    try {
+        $installResult = Start-Process "dism.exe" `
+            -ArgumentList @(
+                "/online",
+                "/enable-feature",
+                "/featurename:$($feature.Name)",
+                "/norestart",
+                "/all"
+            ) `
+            -Wait `
+            -PassThru
+        
+        if ($installResult.ExitCode -eq 0) {
+            Write-Host "  [OK] $($feature.Name) installed successfully" -ForegroundColor Green
+        } else {
+            Write-Warning "  DISM returned exit code $($installResult.ExitCode) for $($feature.Name)"
+        }
+    } catch {
+        Write-Warning "  Failed to install $($feature.Name): $_"
+    }
+    
+    # Step 2: Copy from WinSxS
+    Write-Host "  [Step 2] Copying from WinSxS..." -ForegroundColor Cyan
     $winsxsPath = "C:\Windows\WinSxS"
     if (Test-Path -Path $winsxsPath) {
-        # Find WSL-related folders in WinSxS
-        $wslFolders = Get-ChildItem -Path $winsxsPath -Directory | Where-Object { $_.Name -match "Microsoft-Windows-Subsystem-Linux" }
+        # Find folders matching the feature name in WinSxS
+        $featureFolders = Get-ChildItem -Path $winsxsPath -Directory | Where-Object { $_.Name -match [regex]::Escape($feature.Name) }
         
-        if ($wslFolders.Count -gt 0) {
-            Write-Host "Found $($wslFolders.Count) WSL folders in WinSxS" -ForegroundColor Cyan
-            foreach ($folder in $wslFolders) {
-                Write-Host "Copying: $($folder.Name)..." -ForegroundColor Yellow
+        if ($featureFolders.Count -gt 0) {
+            Write-Host "  Found $($featureFolders.Count) folders for $($feature.Name)" -ForegroundColor Cyan
+            foreach ($folder in $featureFolders) {
+                Write-Host "    Copying: $($folder.Name)..." -ForegroundColor Yellow
                 Copy-Item -Path "$($folder.FullName)\*" -Destination $tempExtractDir -Recurse -Force
             }
         } else {
-            Write-Warning "No WSL folders found in WinSxS"
+            Write-Warning "  No folders found for $($feature.Name) in WinSxS"
         }
+    }
+    
+    # Step 3: Uninstall the feature (if it wasn't already installed)
+    Write-Host "  [Step 3] Uninstalling $($feature.Name)..." -ForegroundColor Cyan
+    try {
+        $uninstallResult = Start-Process "dism.exe" `
+            -ArgumentList @(
+                "/online",
+                "/disable-feature",
+                "/featurename:$($feature.Name)",
+                "/norestart"
+            ) `
+            -Wait `
+            -PassThru
+        
+        if ($uninstallResult.ExitCode -eq 0) {
+            Write-Host "  [OK] $($feature.Name) uninstalled successfully" -ForegroundColor Green
+        } else {
+            Write-Warning "  DISM returned exit code $($uninstallResult.ExitCode) for uninstalling $($feature.Name)"
+        }
+    } catch {
+        Write-Warning "  Failed to uninstall $($feature.Name): $_"
     }
 }
 
