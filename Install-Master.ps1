@@ -2,27 +2,13 @@
 .SYNOPSIS
     Haupt-Installer (Robust). Aktiviert WSL, installiert Podman Desktop & CLI, richtet Machine ein.
     SAFE CODE: Validiert Installer-Pfad und Rechte. Idempotent - kann mehrfach ausgeführt werden.
-    ONLINE DEPLOYMENT: Verwendet Winget für Online-Installation von WSL2.
-
-.EXAMPLE
-    powershell.exe -ExecutionPolicy Bypass -File Install-Master.ps1
-
-.EXITCODES
-    Exit Codes:
-      1 = Nicht als Administrator ausgeführt
-      2 = Installer nicht gefunden
-      3 = Konfigurationsdatei nicht gefunden
-      40 = MSI nicht gefunden
-      41 = WSL Feature-Aktivierung fehlgeschlagen
-      42 = Distro Import/Konfiguration fehlgeschlagen
-      3010 = Erfolgreich, Neustart erforderlich
 #>
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ============================================================================
 # HELPER FUNCTIONS
-# ===============================================================================
+# ============================================================================
 
 function Write-InstallLog {
     param(
@@ -167,39 +153,44 @@ try {
 }
 
 # -----------------------------------------------------------------------------
-# STEP 4: ENABLE WSL2 FEATURES (ONLINE)
+# STEP 4: WSL FEATURES ACTIVATION
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Aktiviere WSL2 Features..." -Level Info
-
-$wslFeatures = @(
-    @{ Name = "Microsoft-Windows-Subsystem-Linux"; DisplayName = "Windows Subsystem for Linux" },
-    @{ Name = "VirtualMachinePlatform"; DisplayName = "Virtual Machine Platform (WSL2)" }
-)
-
-foreach ($feature in $wslFeatures) {
-    Write-InstallLog -Message "  Aktiviere: $($feature.DisplayName)..." -Level Info
-    
-    try {
-        # Enable feature from Windows Update (requires internet connection)
-        Enable-WindowsOptionalFeature `
-            -Online `
-            -NoRestart `
-            -FeatureName $feature.Name `
-            -All | Out-Null
-        
-        Write-InstallLog -Message "    ✓ $($feature.DisplayName) erfolgreich aktiviert." -Level Info
-    } catch {
-        Write-InstallLog -Message "    ✗ Fehler bei $($feature.DisplayName): $_" -Level Error
-        $wslActivationFailed = $true
-    }
+try {
+    Enable-WindowsOptionalFeature -Online -FeatureName "VirtualMachinePlatform"             -All -NoRestart -ErrorAction SilentlyContinue | Out-Null
+    Enable-WindowsOptionalFeature -Online -FeatureName "Microsoft-Windows-Subsystem-Linux"  -All -NoRestart -ErrorAction SilentlyContinue | Out-Null
+} catch {
+    Write-InstallLog -Message "Warnung: WSL Features konnten nicht aktiviert werden: $_" -Level Warning
 }
 
-if ($wslActivationFailed) {
-    Write-InstallLog -Message "Fehler: WSL2 Feature-Aktivierung fehlgeschlagen!" -Level Error
-    exit 41
+# -----------------------------------------------------------------------------
+# STEP 4.1: SILENT WSL INSTALL/UPDATE (prevents Microsoft Store popup)
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Prüfe und installiere WSL (silent)..." -Level Info
+# -----------------------------------------------------------------------------
+# STEP 4.5: WSL OFFLINE INSTALLATION (MANDATORY)
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Prüfe WSL Offline-Installer..." -Level Info
+$WslMsiPath = Join-Path -Path $InstallDir -ChildPath "wsl-offline-installer.msi"
+
+if (-not (Test-Path -Path $WslMsiPath)) {
+    Write-InstallLog -Message "Fehler: WSL Offline-Installer fehlt!" -Level Error
+    Write-Host "[ERROR] wsl-offline-installer.msi nicht gefunden in: $WslMsiPath" -ForegroundColor Red
+    Write-Host "Bitte legen Sie 'wsl-offline-installer.msi' in den Deployment-Ordner." -ForegroundColor Yellow
+    Write-Host "Download von: https://github.com/microsoft/WSL/releases" -ForegroundColor Yellow
+    exit 40
 }
 
-Write-InstallLog -Message "WSL2 Features erfolgreich aktiviert." -Level Info
+Write-InstallLog -Message "Installiere WSL offline via MSI..." -Level Info
+$wslProc = Start-Process "msiexec.exe" `
+    -ArgumentList "/i `"$WslMsiPath`" /qn /norestart /L*V `"$env:TEMP\wsl-install.log`"" `
+    -Wait -PassThru
+
+if ($wslProc.ExitCode -ne 0 -and $wslProc.ExitCode -ne 3010) {
+    Write-InstallLog -Message "WSL Offline-Installation fehlgeschlagen. Exit Code: $($wslProc.ExitCode)" -Level Error
+    throw "WSL Offline-Installation fehlgeschlagen. Log unter $env:TEMP\wsl-install.log prüfen."
+}
+Write-InstallLog -Message "WSL offline erfolgreich installiert." -Level Info
 
 # -----------------------------------------------------------------------------
 # STEP 5: PODMAN DESKTOP INSTALLATION
@@ -304,11 +295,41 @@ try {
 }
 
 # -----------------------------------------------------------------------------
-# STEP 5.2: SKIPPED - PODMAN MACHINE IMAGE COPY
+# STEP 5.2: COPY PODMAN MACHINE IMAGE TO SECURE STORAGE
 # -----------------------------------------------------------------------------
-Write-InstallLog -Message "Podman Machine image copy skipped..." -Level Info
+Write-InstallLog -Message "Copying Podman Machine image to secure storage..." -Level Info
+try {
+    $WslMachineImagePath = Join-Path -Path $InstallDir -ChildPath "podman-machine.x86_64.wsl.tar.zst"
+    
+    if (-not (Test-Path -Path $WslMachineImagePath)) {
+        Write-InstallLog -Message "Fehler: Podman Machine Image fehlt!" -Level Error
+        Write-Host "[ERROR] podman-machine.x86_64.wsl.tar.zst nicht gefunden in: $WslMachineImagePath" -ForegroundColor Red
+        Write-Host "Bitte legen Sie 'podman-machine.x86_64.wsl.tar.zst' in den Deployment-Ordner." -ForegroundColor Yellow
+        Write-Host "Download von: https://github.com/podman-container-tools/podman-machine-os/releases" -ForegroundColor Yellow
+        exit 40
+    }
+    
+    # Ensure SecureDir exists
+    if (-not (Test-Path -Path $SecureDir)) {
+        New-Item -ItemType Directory -Force -Path $SecureDir | Out-Null
+        Write-InstallLog -Message "Created directory: $SecureDir" -Level Info
+    }
+    
+    # Copy the image to secure storage location
+    $DestinationPath = Join-Path -Path $SecureDir -ChildPath "podman-machine.x86_64.wsl.tar.zst"
+    Copy-Item -Path $WslMachineImagePath -Destination $DestinationPath -Force
+    Write-InstallLog -Message "Podman Machine image copied to: $DestinationPath" -Level Info
+} catch {
+    Write-InstallLog -Message "Fehler beim Kopieren des Podman Machine Images: $_" -Level Error
+    exit 43
+}
+
+# -----------------------------------------------------------------------------
+# STEP 5.3: SKIPPED - PODMAN MACHINE INITIALIZATION
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Podman Machine initialization skipped..." -Level Info
 Write-InstallLog -Message "  Machine will be initialized by Init-PodmanUser.ps1 after reboot." -Level Info
-Write-InstallLog -Message "  WSL2 provider will be used (not Hyper-V)." -Level Info
+Write-InstallLog -Message "  This ensures WSL2 provider is used (not Hyper-V)." -Level Info
 
 # -----------------------------------------------------------------------------
 # STEP 5.4: CREATE .WSLCONFIG TEMPLATE FOR SELFHEAL

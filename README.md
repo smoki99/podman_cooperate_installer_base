@@ -24,31 +24,23 @@ Es werden KEINE Online-Fallbacks verwendet!
 
 ### Vorbereitung der Offline-Pakete (Admin-Aufgabe)
 
-#### 1. WinSxS Offline Sources für WSL Features (MANDATORY)
-- Extrahieren Sie die WSL Feature-Dateien aus einem Windows ISO:
-  ```powershell
-  # Mount Windows ISO und extrahieren Sie die WinSxS Quelle
-  # Die Struktur muss sein: sources\sxs\en-us\
-  # Enthält alle benötigten Dateien für Enable-WindowsOptionalFeature -Source
-  ```
-- Alternativ: Verwenden Sie DISM um Features zu exportieren:
-  ```powershell
-  # Auf einem Windows System mit Internetverbindung
-  Export-WindowsImage -ImagePath "Windows.iso" -Index 1 -Path "C:\Temp\WinSxS"
-  ```
-- Die extrahierten Dateien müssen im Ordner `sources\sxs\en-us` liegen
+#### 1. WSL MSI Installer (MANDATORY)
+- Download von: https://github.com/microsoft/WSL/releases
+- Speichern als `wsl-offline-installer.msi` im Deployment-Ordner
+- Beispiel: `wsl.2.4.10.x64.msi`
 
 #### 2. Podman WSL Machine Image (MANDATORY)
 - Download des aktuellen Images von: https://github.com/podman-container-tools/podman-machine-os/releases
 - Speichern als `podman-machine.x86_64.wsl.tar.zst` im Deployment-Ordner
+- Kopieren nach: `C:\ProgramData\CorporateIT\Podman\podman-machine.x86_64.wsl.tar.zst`
 - Beispiel: `podman-machine.5.8.4.x86_64.wsl.tar.zst`
 
 ### Fehlerbehandlung bei fehlenden Paketen
 
 | Fehlendes Paket | Exit Code | Lösung |
 |-----------------|-----------|--------|
-| sources\sxs\en-us | 41 | WinSxS Sources aus Windows ISO extrahieren |
-| podman-machine.x86_64.wsl.tar.zst | 42 | Image im Deployment-Ordner platzieren |
+| wsl-offline-installer.msi | 40 | MSI in Deployment-Ordner kopieren |
+| podman-machine.x86_64.wsl.tar.zst | - | Image nach C:\ProgramData\CorporateIT\Podman\ kopieren |
 
 ---
 
