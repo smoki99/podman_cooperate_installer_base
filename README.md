@@ -176,6 +176,12 @@ Runs at System Startup. Developer environments break often (stuck network routes
 * **Issue: Podman CLI not found after installation.**
   * *Reason:* The MSI installer may have placed podman.exe in an unexpected location. Check the log file at `%TEMP%\podman-install.log` to see which paths were checked and whether it was added to PATH.
 
+* **Issue: SelfHeal-Podman.ps1 fails with access denied errors.**
+  * *Reason:* When admin is logged in, SYSTEM cannot write .wslconfig to Administrator's profile. The script now logs warnings and continues - this is expected behavior.
+
+* **Issue: Unauthorized WSL distros not being removed.**
+  * *Check the SelfHeal log at `%ALLUSERSPROFILE%\Podman Desktop\podman-selfheal.log` for the list of detected distros with [ALLOWED] or [UNAUTHORIZED] markers before any deletion occurs.*
+
 ---
 
 ## 📝 Log Files Location
