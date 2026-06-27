@@ -66,9 +66,9 @@ Write-Host "-------------------------"
 foreach ($file in $requiredFiles.Keys) {
     $fullPath = Join-Path -Path $Path -ChildPath $file
     if (Test-Path -Path $fullPath) {
-        Write-Status "  ✓ $($requiredFiles[$file]): OK" -Status 'OK'
+        Write-Status "  [OK] $($requiredFiles[$file]): OK" -Status 'OK'
     } else {
-        Write-Status "  ✗ $($requiredFiles[$file]): MISSING" -Status 'MISSING'
+        Write-Status "  [FAIL] $($requiredFiles[$file]): MISSING" -Status 'MISSING'
         $allOk = $false
     }
 }
@@ -79,7 +79,7 @@ Write-Host "-------------------------"
 foreach ($file in $optionalFiles.Keys) {
     $fullPath = Join-Path -Path $Path -ChildPath $file
     if (Test-Path -Path $fullPath) {
-        Write-Status "  ✓ $($optionalFiles[$file]): OK" -Status 'OK'
+        Write-Status "  [OK] $($optionalFiles[$file]): OK" -Status 'OK'
     } else {
         Write-Status "  ! $($optionalFiles[$file]): MISSING (Optional)" -Status 'WARNING'
         $warnings += $optionalFiles[$file]
@@ -97,9 +97,9 @@ $wslFeatures = @(
 foreach ($feature in $wslFeatures) {
     $featurePath = Join-Path -Path "$Path\sources\sxs" -ChildPath $feature
     if (Test-Path -Path $featurePath) {
-        Write-Status "  ✓ WSL Feature '$feature': OK" -Status 'OK'
+        Write-Status "  [OK] WSL Feature '$feature': OK" -Status 'OK'
     } else {
-        Write-Status "  ✗ WSL Feature '$feature': MISSING" -Status 'MISSING'
+        Write-Status "  [FAIL] WSL Feature '$feature': MISSING" -Status 'MISSING'
         $allOk = $false
     }
 }
@@ -108,10 +108,10 @@ foreach ($feature in $wslFeatures) {
 Write-Host ""
 Write-Host "========================================="
 if ($allOk) {
-    Write-Host "  ✓ DEPLOYMENT PACKAGE IS COMPLETE"
+    Write-Host "  [OK] DEPLOYMENT PACKAGE IS COMPLETE"
     Write-Host "=========================================" -ForegroundColor Green
 } else {
-    Write-Host "  ✗ DEPLOYMENT PACKAGE IS INCOMPLETE"
+    Write-Host "  [FAIL] DEPLOYMENT PACKAGE IS INCOMPLETE"
     Write-Host "=========================================" -ForegroundColor Red
 }
 
