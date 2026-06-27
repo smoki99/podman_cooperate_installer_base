@@ -154,7 +154,12 @@ Write-Host ""
 Write-Host "Verifying extraction..." -ForegroundColor Yellow
 
 $extractedFiles = Get-ChildItem -Path $sourceDir -Recurse | Measure-Object | Select-Object -ExpandProperty Count
-$totalSize = (Get-ChildItem -Path $sourceDir -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
+$totalSizeObj = Get-ChildItem -Path $sourceDir -Recurse | Measure-Object -Property Length -Sum
+if ($null -ne $totalSizeObj) {
+    $totalSize = $totalSizeObj.Sum / 1MB
+} else {
+    $totalSize = 0
+}
 
 Write-Host "[OK] Extracted $extractedFiles files (~$([math]::Round($totalSize, 2)) MB)" -ForegroundColor Green
 
