@@ -74,12 +74,17 @@ try {
     
     foreach ($Profile in $UserProfiles) {
         $ConfigTarget = Join-Path -Path $Profile.FullName -ChildPath ".wslconfig"
-        [System.IO.File]::WriteAllText(
-            $ConfigTarget,
-            $WslConfigContent,
-            [System.Text.UTF8Encoding]::new($false)   # $false = kein BOM
-        )
-        Write-PodmanLog -Message "Applied .wslconfig to: $($Profile.FullName)" -Level Info
+        try {
+            [System.IO.File]::WriteAllText(
+                $ConfigTarget,
+                $WslConfigContent,
+                [System.Text.UTF8Encoding]::new($false)   # $false = kein BOM
+            )
+            Write-PodmanLog -Message "Applied .wslconfig to: $($Profile.FullName)" -Level Info
+        } catch {
+            # Access denied or other errors - just warn and continue
+            Write-PodmanLog -Message "Warning: Could not write .wslconfig to $($Profile.FullName): $_" -Level Warning
+        }
     }
 
     # 2. Nur hängende wslhost.exe-Prozesse killen.
