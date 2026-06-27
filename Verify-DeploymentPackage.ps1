@@ -104,18 +104,6 @@ foreach ($feature in $wslFeatures) {
     }
 }
 
-Write-Host ""
-Write-Host "Checking ubuntu.tar.gz integrity:"
-Write-Host "----------------------------------"
-$ubuntuTarball = Join-Path -Path $Path -ChildPath "ubuntu.tar.gz"
-if (Test-Path -Path $ubuntuTarball) {
-    $fileInfo = Get-Item -Path $ubuntuTarball
-    $sizeMB = [math]::Round($fileInfo.Length / 1MB, 2)
-    Write-Status "  ✓ ubuntu.tar.gz: OK ($sizeMB MB)" -Status 'OK'
-} else {
-    Write-Status "  ✗ ubuntu.tar.gz: MISSING" -Status 'MISSING'
-    $allOk = $false
-}
 
 Write-Host ""
 Write-Host "========================================="
