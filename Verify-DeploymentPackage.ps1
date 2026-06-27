@@ -18,8 +18,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 param(
-    [string]$Path = $PSScriptRoot
+    [string]$Path
 )
+
+if ([string]::IsNullOrEmpty($Path)) {
+    $Path = $PSScriptRoot
+}
 
 function Write-Status {
     param(
