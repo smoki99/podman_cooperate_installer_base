@@ -99,16 +99,7 @@ try {
         Write-PodmanLog -Message "No hanging wslhost.exe processes found." -Level Info
     }
 
-    # 3. Systemweite Docker-Socket-Variable garantieren
-    Write-PodmanLog -Message "Setting DOCKER_HOST environment variable..." -Level Info
-    [Environment]::SetEnvironmentVariable(
-        "DOCKER_HOST",
-        "npipe:////./pipe/podman-machine-default",
-        "Machine"
-    )
-    Write-PodmanLog -Message "DOCKER_HOST set to npipe:////./pipe/podman-machine-default" -Level Info
-
-    # 4. MTU in der laufenden Podman-Machine setzen (VPN-Kompatibilität).
+    # 3. MTU in der laufenden Podman-Machine setzen (VPN-Kompatibilität).
     # Der Wert aus podman-config.json wird direkt auf das Netzwerkinterface angewendet.
     if ($null -ne $Config.CorporateSettings.MTU) {
         Write-PodmanLog -Message "Setting MTU to $($Config.CorporateSettings.MTU)..." -Level Info
