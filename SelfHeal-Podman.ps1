@@ -18,9 +18,9 @@ function Write-PodmanLog {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     
     # Log file output with rotation (keep last 50 lines)
-    $LogFilePath = "$env:ALLUSERSPROFILE\Podman Desktop\podman-selfheal.log"
-    if (-not (Test-Path -Path "$env:ALLUSERSPROFILE\Podman Desktop")) {
-        New-Item -Path "$env:ALLUSERSPROFILE\Podman Desktop" -ItemType Directory -Force | Out-Null
+    $LogFilePath = "$env:APPDATA\Podman Desktop\podman-selfheal.log"
+    if (-not (Test-Path -Path "$env:APPDATA\Podman Desktop")) {
+        New-Item -Path "$env:APPDATA\Podman Desktop" -ItemType Directory -Force | Out-Null
     }
     
     if (Test-Path $LogFilePath) {
