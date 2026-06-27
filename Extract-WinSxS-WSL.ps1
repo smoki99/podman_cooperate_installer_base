@@ -68,62 +68,80 @@ if (Test-Path -Path $tempExtractDir) {
 New-Item -ItemType Directory -Force -Path $tempExtractDir | Out-Null
 Write-Host "[OK] Created temp directory: $tempExtractDir" -ForegroundColor Green
 
-# Export WSL packages using DISM
+# Method 1: Try to export using DISM with feature name (not manifest)
 Write-Host ""
 Write-Host "Exporting WSL packages from Windows..." -ForegroundColor Yellow
 Write-Host "This may take a few minutes and require internet access for missing files." -ForegroundColor Cyan
 Write-Host ""
 
+$exportSuccess = $false
+
+# Try exporting VirtualMachinePlatform first (simpler approach)
 try {
+    Write-Host "Attempting to export VirtualMachinePlatform..." -ForegroundColor Cyan
     $dismResult = Start-Process "dism.exe" `
         -ArgumentList @(
             "/online",
             "/export-package",
-            "/destination:`"$tempExtractDir`"",
-            "/manifest:$manifestPath"
+            "/name:VirtualMachinePlatform",
+            "/destination:`"$tempExtractDir`"
         ) `
         -Wait `
         -PassThru
     
-    if ($dismResult.ExitCode -ne 0) {
-        Write-Warning "DISM returned exit code $($dismResult.ExitCode). Attempting alternative method..."
+    if ($dismResult.ExitCode -eq 0) {
+        Write-Host "[OK] VirtualMachinePlatform exported successfully" -ForegroundColor Green
+        $exportSuccess = $true
+    } else {
+        Write-Warning "DISM returned exit code $($dismResult.ExitCode) for VirtualMachinePlatform"
     }
 } catch {
-    Write-Error "DISM export failed: $_"
+    Write-Warning "VirtualMachinePlatform export failed: $_"
 }
 
-# Alternative method: Export all packages and filter
-Write-Host ""
-Write-Host "Using alternative extraction method..." -ForegroundColor Yellow
-
+# Try exporting Microsoft-Windows-Subsystem-Linux
 try {
-    # Create a more comprehensive manifest
-    $fullManifest = @"
-<assembly xmlns="urn:schemas-microsoft-com:asm.v3" manifestVersion="1.0">
-  <identity name="Microsoft-Windows-Subsystem-Linux-Package" version="1.0.0.0"/>
-</assembly>
-<assembly xmlns="urn:schemas-microsoft-com:asm.v3" manifestVersion="1.0">
-  <identity name="VirtualMachinePlatform-Package" version="1.0.0.0"/>
-</assembly>
-"@
-    
-    $fullManifestPath = Join-Path -Path $env:TEMP -ChildPath "wsl-full.manifest"
-    Set-Content -Path $fullManifestPath -Value $fullManifest -Encoding UTF8
-    
-    # Export using DISM with both features
-    Write-Host "Exporting Microsoft-Windows-Subsystem-Linux..." -ForegroundColor Cyan
-    Start-Process "dism.exe" `
+    Write-Host "Attempting to export Microsoft-Windows-Subsystem-Linux..." -ForegroundColor Cyan
+    $dismResult = Start-Process "dism.exe" `
         -ArgumentList @(
             "/online",
             "/export-package",
-            "/destination:`"$tempExtractDir`"",
-            "/manifest:$fullManifestPath"
+            "/name:Microsoft-Windows-Subsystem-Linux",
+            "/destination:`"$tempExtractDir`"
         ) `
         -Wait `
         -PassThru
     
+    if ($dismResult.ExitCode -eq 0) {
+        Write-Host "[OK] Microsoft-Windows-Subsystem-Linux exported successfully" -ForegroundColor Green
+        $exportSuccess = $true
+    } else {
+        Write-Warning "DISM returned exit code $($dismResult.ExitCode) for WSL"
+    }
 } catch {
-    Write-Warning "Alternative method also encountered issues: $_"
+    Write-Warning "WSL export failed: $_"
+}
+
+# If DISM methods fail, try direct copy from WinSxS
+if (-not $exportSuccess) {
+    Write-Host ""
+    Write-Host "DISM export failed. Attempting direct copy from WinSxS..." -ForegroundColor Yellow
+    
+    $winsxsPath = "C:\Windows\WinSxS"
+    if (Test-Path -Path $winsxsPath) {
+        # Find WSL-related folders in WinSxS
+        $wslFolders = Get-ChildItem -Path $winsxsPath -Directory | Where-Object { $_.Name -match "Microsoft-Windows-Subsystem-Linux" }
+        
+        if ($wslFolders.Count -gt 0) {
+            Write-Host "Found $($wslFolders.Count) WSL folders in WinSxS" -ForegroundColor Cyan
+            foreach ($folder in $wslFolders) {
+                Write-Host "Copying: $($folder.Name)..." -ForegroundColor Yellow
+                Copy-Item -Path "$($folder.FullName)\*" -Destination $tempExtractDir -Recurse -Force
+            }
+        } else {
+            Write-Warning "No WSL folders found in WinSxS"
+        }
+    }
 }
 
 # Copy extracted files to output directory
