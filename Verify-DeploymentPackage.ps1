@@ -14,9 +14,6 @@
 .EXAMPLE
     .\Verify-DeploymentPackage.ps1 -Path "C:\Deployment\podman_cooperate_installer_base"
 #>
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
 param(
     [string]$Path
 )
