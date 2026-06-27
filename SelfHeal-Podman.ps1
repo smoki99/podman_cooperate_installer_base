@@ -130,9 +130,20 @@ try {
         $_.ToString().Trim()
     }
     
+    # Log all found distributions with their status
+    Write-PodmanLog -Message "Found WSL distributions:" -Level Info
+    foreach ($distro in $allDistros) {
+        if ($distro -in $allowedDistros) {
+            Write-PodmanLog -Message "  [ALLOWED] $distro" -Level Info
+        } else {
+            Write-PodmanLog -Message "  [UNAUTHORIZED] $distro" -Level Warning
+        }
+    }
+    
+    # Remove unauthorized distros
     foreach ($distro in $allDistros) {
         if ($distro -notin $allowedDistros) {
-            Write-PodmanLog -Message "Found unauthorized distro: $distro" -Level Warning
+            Write-PodmanLog -Message "Removing unauthorized distro: $distro" -Level Warning
             
             # Shutdown the distro first (if running)
             wsl --terminate "$distro" 2>$null | Out-Null
@@ -140,7 +151,7 @@ try {
             # Unregister/remove the distro
             $unregResult = wsl --unregister "$distro" 2>&1
             if ($LASTEXITCODE -eq 0) {
-                Write-PodmanLog -Message "Removed unauthorized distro: $distro" -Level Info
+                Write-PodmanLog -Message "Successfully removed: $distro" -Level Info
                 
                 # Log to EventLog for audit trail
                 Write-EventLog -LogName Application -Source "PodmanHeal" -EntryType Warning `
