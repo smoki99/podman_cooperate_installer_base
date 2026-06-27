@@ -115,6 +115,40 @@ autoMemoryReclaim=dropcache
         Write-PodmanLog -Message "MTU set successfully." -Level Info
     }
 
+    # 5. Unauthorized WSL distros cleanup (security enforcement).
+    # Only podman-machine-default is allowed; all other user-installed distros are removed.
+    Write-PodmanLog -Message "Checking for unauthorized WSL distributions..." -Level Info
+    $allowedDistros = @("podman-machine-default", "docker-desktop", "docker-desktop-data")
+    
+    # Get list of running and stopped distros (excluding Microsoft default)
+    $allDistros = wsl -l 2>$null | Select-String -Pattern "^\s+" | ForEach-Object {
+        $_.ToString().Trim()
+    }
+    
+    foreach ($distro in $allDistros) {
+        if ($distro -notin $allowedDistros) {
+            Write-PodmanLog -Message "Found unauthorized distro: $distro" -Level Warning
+            
+            # Shutdown the distro first (if running)
+            wsl --terminate "$distro" 2>$null | Out-Null
+            
+            # Unregister/remove the distro
+            $unregResult = wsl --unregister "$distro" 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-PodmanLog -Message "Removed unauthorized distro: $distro" -Level Info
+                
+                # Log to EventLog for audit trail
+                Write-EventLog -LogName Application -Source "PodmanHeal" -EntryType Warning `
+                    -EventId 1004 -Message "Unauthorized WSL distribution removed: $distro" `
+                    -ErrorAction SilentlyContinue
+            } else {
+                Write-PodmanLog -Message "Failed to remove distro '$distro': $unregResult" -Level Error
+            }
+        }
+    }
+    
+    Write-PodmanLog -Message "Unauthorized distro check completed." -Level Info
+
     Write-PodmanLog -Message "=== Podman Self-Heal Completed Successfully ===" -Level Info
     
     Write-EventLog -LogName Application -Source "PodmanHeal" -EntryType Information `
