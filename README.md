@@ -30,7 +30,7 @@ Es werden KEINE Online-Fallbacks verwendet!
 - Beispiel: `wsl.2.4.10.x64.msi`
 
 #### 2. Podman CoreOS Image (MANDATORY)
-- Download des aktuellen Images von: https://github.com/containers/podman/releases
+- Download des aktuellen Images von: https://github.com/podman-container-tools/podman-machine-os/releases
 - Speichern als `coreos-image.tar.xz` im Deployment-Ordner
 - Kopieren nach: `C:\ProgramData\CorporateIT\Podman\coreos-image.tar.xz`
 - Beispiel: `fedora-coreos-49.20250318.3.0.tar.xz`
