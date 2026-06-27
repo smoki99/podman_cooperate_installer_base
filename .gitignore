@@ -1,2 +1,5 @@
 *.exe
-*.msiw
+*.msi
+*.iso
+*.gz
+*.zip
