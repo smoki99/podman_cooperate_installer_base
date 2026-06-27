@@ -195,4 +195,4 @@ For troubleshooting, check these log files:
 
 ## 📄 License
 
-This project is provided as-is for enterprise deployment purposes.
+MIT License - See LICENSE file in the repository root for full terms.
