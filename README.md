@@ -7,7 +7,7 @@ It is specifically engineered for highly regulated corporate environments that u
 ## ✨ Key Features
 
 *   **Zero-Touch User Experience:** Developers do not see setup wizards, telemetry prompts, or EULAs. Everything is pre-configured silently.
-*   **Fully Offline / Air-Gapped Deployment:** No internet connection required. Uses offline MSI installers for WSL and local CoreOS images for Podman Machine.
+*   **Fully Offline / Air-Gapped Deployment:** No internet connection required. Uses offline MSI installers for WSL and local WSL machine images for Podman Machine.
 *   **Zero-Trust Registry Enforcement:** Modifies the internal Linux `policy.json` to block all external registries (like Docker Hub or GHCR) and forces image pulls *only* from your approved corporate registry.
 *   **Transparent Proxy & SSL Inspection Bypass:** Automatically injects your Corporate Root CA into the WSL machine so `podman pull` doesn't fail with `x509: unknown authority` errors.
 *   **Cisco VPN Compatibility:** Enforces WSL2 **Mirrored Networking** and **DNS Tunneling** to prevent IP/Subnet collisions with corporate VPNs.
@@ -29,18 +29,18 @@ Es werden KEINE Online-Fallbacks verwendet!
 - Speichern als `wsl-offline-installer.msi` im Deployment-Ordner
 - Beispiel: `wsl.2.4.10.x64.msi`
 
-#### 2. Podman CoreOS Image (MANDATORY)
+#### 2. Podman WSL Machine Image (MANDATORY)
 - Download des aktuellen Images von: https://github.com/podman-container-tools/podman-machine-os/releases
-- Speichern als `coreos-image.tar.xz` im Deployment-Ordner
-- Kopieren nach: `C:\ProgramData\CorporateIT\Podman\coreos-image.tar.xz`
-- Beispiel: `fedora-coreos-49.20250318.3.0.tar.xz`
+- Speichern als `podman-machine.x86_64.wsl.tar.zst` im Deployment-Ordner
+- Kopieren nach: `C:\ProgramData\CorporateIT\Podman\podman-machine.x86_64.wsl.tar.zst`
+- Beispiel: `podman-machine.5.8.4.x86_64.wsl.tar.zst`
 
 ### Fehlerbehandlung bei fehlenden Paketen
 
 | Fehlendes Paket | Exit Code | Lösung |
 |-----------------|-----------|--------|
 | wsl-offline-installer.msi | 40 | MSI in Deployment-Ordner kopieren |
-| coreos-image.tar.xz | - | Image nach C:\ProgramData\CorporateIT\Podman\ kopieren |
+| podman-machine.x86_64.wsl.tar.zst | - | Image nach C:\ProgramData\CorporateIT\Podman\ kopieren |
 
 ---
 
@@ -54,7 +54,7 @@ Your deployment package must contain the following files in a single folder:
  ┣ 📜 podman-desktop-setup.exe      (The official offline installer for WSL2)
  ┣ 📜 podman-installer-windows-amd64.msi  (Podman CLI MSI installer - see Preparation section below)
  ┣ 📜 wsl-offline-installer.msi     (MANDATORY: Offline WSL installer from GitHub releases)
- ┣ 📜 coreos-image.tar.xz           (MANDATORY: Podman CoreOS image for offline deployment)
+ ┣ 📜 podman-machine.x86_64.wsl.tar.zst  (MANDATORY: Podman WSL machine image for offline deployment)
  ┣ 📜 CorporateRootCA.cer           (OPTIONAL: Your company's Base64 Root CA)
  ┣ 📜 podman-config.json            (Central configuration file)
  ┣ 📜 Install-Master.ps1            (Phase 1: SYSTEM context installer)

@@ -295,14 +295,44 @@ try {
 }
 
 # -----------------------------------------------------------------------------
-# STEP 5.2: SKIPPED - PODMAN MACHINE INITIALIZATION
+# STEP 5.2: COPY PODMAN MACHINE IMAGE TO SECURE STORAGE
+# -----------------------------------------------------------------------------
+Write-InstallLog -Message "Copying Podman Machine image to secure storage..." -Level Info
+try {
+    $WslMachineImagePath = Join-Path -Path $InstallDir -ChildPath "podman-machine.x86_64.wsl.tar.zst"
+    
+    if (-not (Test-Path -Path $WslMachineImagePath)) {
+        Write-InstallLog -Message "Fehler: Podman Machine Image fehlt!" -Level Error
+        Write-Host "[ERROR] podman-machine.x86_64.wsl.tar.zst nicht gefunden in: $WslMachineImagePath" -ForegroundColor Red
+        Write-Host "Bitte legen Sie 'podman-machine.x86_64.wsl.tar.zst' in den Deployment-Ordner." -ForegroundColor Yellow
+        Write-Host "Download von: https://github.com/podman-container-tools/podman-machine-os/releases" -ForegroundColor Yellow
+        exit 40
+    }
+    
+    # Ensure SecureDir exists
+    if (-not (Test-Path -Path $SecureDir)) {
+        New-Item -ItemType Directory -Force -Path $SecureDir | Out-Null
+        Write-InstallLog -Message "Created directory: $SecureDir" -Level Info
+    }
+    
+    # Copy the image to secure storage location
+    $DestinationPath = Join-Path -Path $SecureDir -ChildPath "podman-machine.x86_64.wsl.tar.zst"
+    Copy-Item -Path $WslMachineImagePath -Destination $DestinationPath -Force
+    Write-InstallLog -Message "Podman Machine image copied to: $DestinationPath" -Level Info
+} catch {
+    Write-InstallLog -Message "Fehler beim Kopieren des Podman Machine Images: $_" -Level Error
+    exit 43
+}
+
+# -----------------------------------------------------------------------------
+# STEP 5.3: SKIPPED - PODMAN MACHINE INITIALIZATION
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Podman Machine initialization skipped..." -Level Info
 Write-InstallLog -Message "  Machine will be initialized by Init-PodmanUser.ps1 after reboot." -Level Info
 Write-InstallLog -Message "  This ensures WSL2 provider is used (not Hyper-V)." -Level Info
 
 # -----------------------------------------------------------------------------
-# STEP 5.3: CREATE .WSLCONFIG TEMPLATE FOR SELFHEAL
+# STEP 5.4: CREATE .WSLCONFIG TEMPLATE FOR SELFHEAL
 # -----------------------------------------------------------------------------
 Write-InstallLog -Message "Creating .wslconfig template for SelfHeal..." -Level Info
 try {

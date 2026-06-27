@@ -112,15 +112,15 @@ try {
         Write-PodmanLog -Message "No machines found. Initializing new Podman Machine..." -Level Info
         
         # -----------------------------------------------------------------------------
-        # MANDATORY: Local CoreOS Image Check (Offline Deployment)
+        # MANDATORY: Local WSL Machine Image Check (Offline Deployment)
         # -----------------------------------------------------------------------------
-        $LocalImagePath = "C:\ProgramData\CorporateIT\Podman\coreos-image.tar.xz"
+        $LocalImagePath = "C:\ProgramData\CorporateIT\Podman\podman-machine.x86_64.wsl.tar.zst"
         
         if (-not (Test-Path -Path $LocalImagePath)) {
-            throw "Fehler: Lokales CoreOS Image nicht gefunden!\nBitte legen Sie das Image nach: C:\ProgramData\CorporateIT\Podman\coreos-image.tar.xz\nDownload von: https://github.com/containers/podman/releases"
+            throw "Fehler: Lokales WSL Machine Image nicht gefunden!\nBitte legen Sie das Image nach: C:\ProgramData\CorporateIT\Podman\podman-machine.x86_64.wsl.tar.zst\nDownload von: https://github.com/podman-container-tools/podman-machine-os/releases"
         }
         
-        Write-PodmanLog -Message "Verwende lokalen CoreOS Image: $LocalImagePath" -Level Info
+        Write-PodmanLog -Message "Verwende lokales WSL Machine Image: $LocalImagePath" -Level Info
         
         # Init mit lokalem Image (kein Online-Download!)
         $initArgs = @("machine", "init", "--rootful=false", "--image-path", $LocalImagePath)
