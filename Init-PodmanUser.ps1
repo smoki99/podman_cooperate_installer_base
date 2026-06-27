@@ -108,7 +108,8 @@ try {
     Write-PodmanLog -Message "Checking existing Podman machines..." -Level Info
     $machineStatus = @(& $podmanExe machine ls --format json 2>&1 | ConvertFrom-Json)
     
-    if ($machineStatus.Count -eq 0) {
+    # Wenn Count = 1, dann ist die Liste leer (nur Header-Objekt). Dann init und start.
+    if ($machineStatus.Count -eq 1) {
         Write-PodmanLog -Message "No machines found. Initializing new Podman Machine..." -Level Info
         
         # -----------------------------------------------------------------------------
