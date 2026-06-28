@@ -7,40 +7,13 @@ It is specifically engineered for highly regulated corporate environments that u
 ## ✨ Key Features
 
 *   **Zero-Touch User Experience:** Developers do not see setup wizards, telemetry prompts, or EULAs. Everything is pre-configured silently.
-*   **Fully Offline / Air-Gapped Deployment:** No internet connection required. Uses offline MSI installers for WSL and local WSL machine images for Podman Machine.
 *   **Zero-Trust Registry Enforcement:** Modifies the internal Linux `policy.json` to block all external registries (like Docker Hub or GHCR) and forces image pulls *only* from your approved corporate registry.
+*   **Unqualified Search Registry Routing:** Configures `/etc/containers/registries.conf.d/99-corp-registries.conf` to automatically translate unqualified image pulls (e.g., `podman pull nginx`) to route to your private registry (e.g., `registry.your-company.com/nginx`).
 *   **Transparent Proxy & SSL Inspection Bypass:** Automatically injects your Corporate Root CA into the WSL machine so `podman pull` doesn't fail with `x509: unknown authority` errors.
-*   **Cisco VPN Compatibility:** Enforces WSL2 **Mirrored Networking** and **DNS Tunneling** to prevent IP/Subnet collisions with corporate VPNs.
-*   **Self-Healing Architecture:** A SYSTEM-level scheduled task runs at every boot to enforce `.wslconfig` limits (saving RAM) and clear stuck `wslhost.exe` processes.
-*   **Socket Emulation:** Automatically sets the `DOCKER_HOST` environment variable so developer IDEs (VS Code, IntelliJ) and tools like Testcontainers work out-of-the-box.
-*   **WSL Hardening:** Configures `/etc/wsl.conf` with secure defaults: non-root default user, safe automount options, and disabled interop to prevent WSL processes from executing Windows binaries.
-
----
-
-## ⚠️ STRIKT OFFLINE / AIR-GAPPED DEPLOYMENT
-
-**Dieser Installer ist ausschließlich für offline Deployments ausgelegt.**
-Es werden KEINE Online-Fallbacks verwendet!
-
-### Vorbereitung der Offline-Pakete (Admin-Aufgabe)
-
-#### 1. WSL MSI Installer (MANDATORY)
-- Download von: https://github.com/microsoft/WSL/releases
-- Speichern als `wsl-offline-installer.msi` im Deployment-Ordner
-- Beispiel: `wsl.2.4.10.x64.msi`
-
-#### 2. Podman WSL Machine Image (MANDATORY)
-- Download des aktuellen Images von: https://github.com/podman-container-tools/podman-machine-os/releases
-- Speichern als `podman-machine.x86_64.wsl.tar.zst` im Deployment-Ordner
-- Kopieren nach: `C:\ProgramData\CorporateIT\Podman\podman-machine.x86_64.wsl.tar.zst`
-- Beispiel: `podman-machine.5.8.4.x86_64.wsl.tar.zst`
-
-### Fehlerbehandlung bei fehlenden Paketen
-
-| Fehlendes Paket | Exit Code | Lösung |
-|-----------------|-----------|--------|
-| wsl-offline-installer.msi | 40 | MSI in Deployment-Ordner kopieren |
-| podman-machine.x86_64.wsl.tar.zst | - | Image nach C:\ProgramData\CorporateIT\Podman\ kopieren |
+*   **Cisco VPN Compatibility:** Enforces WSL2 **Mirrored Networking** and **DNS Tunneling** to prevent IP/Subnet collisions with corporate VPNs. Configures MTU settings for optimal VPN performance.
+*   **Self-Healing Architecture:** A SYSTEM-level scheduled task runs at every boot and on Cisco AnyConnect VPN events (Event ID 2039) to enforce `.wslconfig` limits (saving RAM), reset WSL services, and apply network configurations.
+*   **Unauthorized WSL Distro Cleanup:** Automatically detects and removes any unauthorized WSL distributions installed by users. Only allows `podman-machine-default`, `docker-desktop`, and `docker-desktop-data`. Logs all removals to Windows EventLog for audit trail compliance.
+*   **Corporate DNS Configuration:** Configures `/etc/resolv.conf` inside the WSL machine with corporate DNS servers for proper name resolution in restricted networks.
 
 ---
 
@@ -53,8 +26,6 @@ Your deployment package must contain the following files in a single folder:
  ┣ 📜 README.md                     (This file)
  ┣ 📜 podman-desktop-setup.exe      (The official offline installer for WSL2)
  ┣ 📜 podman-installer-windows-amd64.msi  (Podman CLI MSI installer - see Preparation section below)
- ┣ 📜 wsl-offline-installer.msi     (MANDATORY: Offline WSL installer from GitHub releases)
- ┣ 📜 podman-machine.x86_64.wsl.tar.zst  (MANDATORY: Podman WSL machine image for offline deployment)
  ┣ 📜 CorporateRootCA.cer           (OPTIONAL: Your company's Base64 Root CA)
  ┣ 📜 podman-config.json            (Central configuration file)
  ┣ 📜 Install-Master.ps1            (Phase 1: SYSTEM context installer)
@@ -102,7 +73,13 @@ Before deploying this package via Microsoft Intune, SCCM, or testing it locally,
    * `MaxMemory` / `Processors`: Limits WSL so developer laptops don't freeze.
    * `MTU`: **Crucial for VPNs.** Low MTU prevents `podman pull` from hanging. `1350` is a safe default; use `1300` if issues persist inside Cisco AnyConnect.
    * `AllowedSearchRegistry`: The only registry developers can pull from (Zero-Trust whitelist). **Replace `registry.your-company.com` with your actual registry before deployment.**
-   * `SecureStorage`: The target directory where scripts are copied by `Install-Master.ps1`. All other scripts derive this path from the config automatically.
+   * `SecureStorage`: The target directory where scripts are copied by `Install-Master.ps1`. All other scripts derive this path from the config automatically. Default: `C:\ProgramData\CorporateIT\Podman`
+
+**Note:** The Secure Storage directory is created during installation and contains:
+- `podman-config.json` (configuration file)
+- `.wslconfig` (template for WSL configuration)
+- `Init-PodmanUser.ps1` (user initialization script)
+- `SelfHeal-Podman.ps1` (maintenance script)
 
 ---
 
@@ -174,17 +151,21 @@ Executed by your deployment tool. It enables Windows features (Hyper-V/WSL), sil
 ### Phase 2: `Init-PodmanUser.ps1` (USER Context)
 Triggered once via a Logon Task when the developer logs in. It runs completely silently without requiring admin rights.
 * Writes a pre-configured `settings.json` to bypass UI pop-ups and enable Windows Certificate Syncing.
-* Runs `podman machine init` and `start`.
-* Uses `wsl -u root` to inject `CorporateRootCA.cer` into the Linux trust store.
-* Overwrites `/etc/containers/policy.json` to block default registries and enforce your private registry.
-* Translates unqualified image pulls (e.g., `podman pull nginx`) to route to your private registry (e.g., `registry.your-company.com/nginx`).
-* Configures WSL hardening via `/etc/wsl.conf`: non-root default user, secure automount options, disabled interop.
+* Runs `podman machine init` with corporate settings (memory, CPU, disk size) from config file.
+* Uses `wsl -u root` to inject `CorporateRootCA.cer` into the Linux trust store (`/usr/local/share/ca-certificates`).
+* Overwrites `/etc/containers/policy.json` to block default registries and enforce your private registry (Zero-Trust architecture).
+* Creates `/etc/containers/registries.conf.d/99-corp-registries.conf` to translate unqualified image pulls (e.g., `podman pull nginx`) to route to your private registry.
+* Configures corporate DNS servers in `/etc/resolv.conf` for proper name resolution in restricted networks.
+* Applies MTU settings to eth0 network interface for VPN compatibility.
+
+**Retry Logic:** If initialization fails, the scheduled task remains registered and will retry on next user login. Only removes itself upon successful completion.
 
 ### Phase 3: `SelfHeal-Podman.ps1` (SYSTEM Context)
-Runs at System Startup. Developer environments break often (stuck network routes, manipulated config files).
-* Forces the deployment of the `.wslconfig` file into `C:\Users\%USERNAME%\`. It enforces `networkingMode=mirrored`, memory limits, and autoMemoryReclaim settings.
-* Ensures the `DOCKER_HOST` environment variable is always correctly pointed to the Podman named pipe.
-* Only terminates stuck `wslhost.exe` processes (not all WSL processes) to avoid breaking other distros like Ubuntu.
+Runs at System Startup and when Cisco AnyConnect VPN events occur (Event ID 2039). Developer environments break often (stuck network routes, manipulated config files).
+* Forces the deployment of the `.wslconfig` file into **all user profiles** (excluding Public, Default*, and Administrator accounts). It enforces `networkingMode=mirrored`, memory limits, and autoMemoryReclaim settings.
+* Terminates ALL `wslhost.exe` processes and performs a full WSL service reset (`net stop wslservice && net start wslservice`) to clear stuck states.
+* Applies MTU configuration to eth0 inside the Podman machine for VPN compatibility.
+* **Security Feature:** Scans all installed WSL distributions and automatically removes any unauthorized distros. Only allows `podman-machine-default`, `docker-desktop`, and `docker-desktop-data`. Logs all removals to Windows EventLog (source: "PodmanHeal") for audit trail compliance.
 
 ---
 
@@ -209,7 +190,7 @@ Runs at System Startup. Developer environments break often (stuck network routes
   * *Reason:* When admin is logged in, SYSTEM cannot write .wslconfig to Administrator's profile. The script now logs warnings and continues - this is expected behavior.
 
 * **Issue: Unauthorized WSL distros not being removed.**
-  * *Check the SelfHeal log at `%ALLUSERSPROFILE%\Podman Desktop\podman-selfheal.log` for the list of detected distros with [ALLOWED] or [UNAUTHORIZED] markers before any deletion occurs.*
+  * *Check the SelfHeal log at `%APPDATA%\Podman Desktop\podman-selfheal.log` for the list of detected distros with [ALLOWED] or [UNAUTHORIZED] markers before any deletion occurs.*
 
 ---
 
@@ -218,7 +199,7 @@ Runs at System Startup. Developer environments break often (stuck network routes
 For troubleshooting, check these log files:
 * **Install-Master.ps1:** `%TEMP%\podman-install.log`
 * **Init-PodmanUser.ps1:** `%APPDATA%\Podman Desktop\podman-init.log`
-* **SelfHeal-Podman.ps1:** `%ALLUSERSPROFILE%\Podman Desktop\podman-selfheal.log`
+* **SelfHeal-Podman.ps1:** `%APPDATA%\Podman Desktop\podman-selfheal.log`
 
 ---
 
